@@ -1,0 +1,7 @@
+transaction_id,property,category,transaction_type,template_name,subject_type,amount
+TXN-001,Summit Ridge,Credit Boost,Positive,Credit Boost Template,Resident,9.99
+TXN-002,Summit Ridge,Credit Boost,Positive,Credit Boost Template,Resident,9.99
+TXN-003,Maple Grove,Credit Boost,Positive,Credit Boost Template,Resident,9.99
+TXN-004,Summit Ridge,Credit Boost,Negative,Credit Boost Template,Resident,-9.99
+TXN-005,Summit Ridge,Other Category,Positive,Other Template,Resident,9.99
+TXN-006,Maple Grove,Credit Boost,Positive,Credit Boost Template,Resident,9.99

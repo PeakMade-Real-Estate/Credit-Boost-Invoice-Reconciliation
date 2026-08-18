@@ -1,0 +1,48 @@
+/* Invoice Reconciliation – main stylesheet */
+
+:root {
+    --brand-primary: #0d6efd;
+    --brand-dark: #1F3864;
+}
+
+body {
+    font-size: 0.9375rem;
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: 0.02em;
+}
+
+/* Card header overrides */
+.card-header {
+    font-size: 0.9375rem;
+}
+
+/* Tighter table rows in the review and exception pages */
+.table-sm td,
+.table-sm th {
+    vertical-align: middle;
+}
+
+/* Status badge helpers (supplement Bootstrap) */
+.badge-info-custom {
+    background-color: #0dcaf0;
+    color: #000;
+}
+
+/* Metric cards */
+.metric-card .rounded-circle {
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Spinner overlay for form submission */
+#uploadForm button[disabled],
+#exceptionsForm button[disabled] {
+    opacity: 0.75;
+    cursor: not-allowed;
+}

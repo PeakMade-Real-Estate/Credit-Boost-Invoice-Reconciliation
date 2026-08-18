@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Results – {{ run_id }}{% endblock %}
+
+{% block content %}
+{% set status = result.get('status', '') %}
+{% set totals = result.get('portfolio_totals', {}) %}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h3 class="mb-0">Reconciliation Results</h3>
+        <div class="text-muted small">
+            <code>{{ run_id }}</code> &mdash;
+            {{ result.get('reporting_month') }} &mdash; {{ result.get('vendor') }}
+        </div>
+    </div>
+    <a href="{{ url_for('reconciliation.review', run_id=run_id) }}"
+       class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Review
+    </a>
+</div>
+
+<!-- Status banner -->
+<div class="alert {{ 'alert-success' if status == 'passed'
+     else 'alert-warning' if status == 'passed_with_warnings'
+     else 'alert-secondary' if status == 'requires_review'
+     else 'alert-danger' }} d-flex align-items-center mb-4">
+    <i class="bi {{ 'bi-check-circle-fill' if status == 'passed'
+        else 'bi-exclamation-triangle-fill' }} fs-4 me-3"></i>
+    <div>
+        <strong>Final Status: {{ status | replace('_', ' ') | title }}</strong>
+        <div class="small mt-1">
+            {{ result.get('blocking_exception_count', 0) }} blocking exception(s),
+            {{ (result.get('property_exceptions', []) | length) +
+               (result.get('rate_exceptions', []) | length) }} total exception(s).
+        </div>
+    </div>
+</div>
+
+<!-- Download cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body text-center p-4">
+                <i class="bi bi-file-earmark-spreadsheet text-success fs-1"></i>
+                <h5 class="mt-3">Accounting Summary</h5>
+                <p class="text-muted small">
+                    One row per property with portfolio totals.
+                    For the accounting team.
+                </p>
+                <a href="{{ url_for('reconciliation.download', run_id=run_id, file_type='accounting') }}"
+                   class="btn btn-success btn-lg px-4">
+                    <i class="bi bi-download me-2"></i>Download
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body text-center p-4">
+                <i class="bi bi-file-earmark-ruled text-primary fs-1"></i>
+                <h5 class="mt-3">Detailed Audit File</h5>
+                <p class="text-muted small">
+                    Every invoice line, all exceptions, validation results,
+                    and run metadata.
+                </p>
+                <a href="{{ url_for('reconciliation.download', run_id=run_id, file_type='audit') }}"
+                   class="btn btn-primary btn-lg px-4">
+                    <i class="bi bi-download me-2"></i>Download
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body text-center p-4">
+                <i class="bi bi-file-earmark-text text-warning fs-1"></i>
+                <h5 class="mt-3">Reconciliation Workbook</h5>
+                <p class="text-muted small">
+                    Property, QTY, Amount, Cash Received, PA Rev Share.
+                    Ready to paste into the monthly workbook.
+                </p>
+                <a href="{{ url_for('reconciliation.download', run_id=run_id, file_type='reconciliation_csv') }}"
+                   class="btn btn-warning btn-lg px-4">
+                    <i class="bi bi-download me-2"></i>Download XLSX
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Portfolio summary table -->
+{% if totals %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-bar-chart me-2"></i>Portfolio Summary
+    </div>
+    <div class="card-body">
+        <div class="row row-cols-2 row-cols-md-4 g-3">
+            {% set summary_items = [
+                ('Total Properties', totals.get('total_properties', '—')),
+                ('Total Net Policies', totals.get('total_net_policy_quantity', '—')),
+                ('Total Invoice Amount', totals.get('total_invoice_amount_owed', '—')),
+                ('Total Cash Received', totals.get('total_cash_received', '—')),
+                ('Total Property Rev Share', totals.get('total_actual_property_revenue_share', '—')),
+                ('Total Expected Peak Share', totals.get('total_expected_peak_revenue_share', '—')),
+                ('Balance Difference', totals.get('balance_difference', '—')),
+                ('Overall Status', totals.get('overall_status', '—')),
+            ] %}
+            {% for label, value in summary_items %}
+            <div class="col">
+                <div class="text-muted small">{{ label }}</div>
+                <div class="fw-semibold">{{ value }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Validation summary -->
+{% set validations = result.get('validation_results', []) %}
+{% if validations %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-check2-all me-2"></i>Validation Results
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for v in validations %}
+        <li class="list-group-item d-flex align-items-start gap-3 py-2 {{ 'list-group-item-success' if v.passed
+            else 'list-group-item-danger' if v.severity == 'BLOCKING'
+            else 'list-group-item-warning' }}">
+            <i class="bi {{ 'bi-check-circle-fill text-success' if v.passed
+                else 'bi-x-circle-fill text-danger' if v.severity == 'BLOCKING'
+                else 'bi-exclamation-circle-fill text-warning' }} fs-5 mt-1"></i>
+            <div>
+                <div class="fw-semibold small">
+                    {{ v.check_name | replace('_', ' ') | title }}
+                </div>
+                <div class="text-muted small">{{ v.message }}</div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}

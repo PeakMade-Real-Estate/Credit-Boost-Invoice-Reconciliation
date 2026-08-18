@@ -1,0 +1,27 @@
+vendor_code: credit_boost_boom
+display_name: "Credit Boost powered by Boom"
+
+accepted_file_types:
+  - csv
+  - xlsx
+
+# Paths are relative to the project root.
+# All may be overridden by explicit kwargs in run_reconciliation().
+property_master_path: data/property_master.csv
+property_rollups_path: config/property_mappings/boom_property_rollups.csv
+
+balance_tolerance: "0.05"
+charge_code: CREDITBOOST
+flat_rate_per_resident: "6.50"
+
+# Rows must satisfy ALL non-empty filters to be counted as qualifying
+# participants.  Leave a list empty to skip that dimension.
+qualifying_filters:
+  category:
+    - partner_boom_report_ongoing_fee
+  transaction_type:
+    - Invoice
+  template_name:
+    - BoomReport
+  subject_type:
+    - Boom::ReportingAccount

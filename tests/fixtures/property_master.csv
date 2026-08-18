@@ -1,0 +1,6 @@
+internal_property_id,pms_property_id,vendor_property_id,property_name,normalized_property_name,vendor,program_status,program_start_date,program_end_date,charge_code,active
+CB-0001,PMS-101,RP-1001,Sunrise Apartments,sunrise apartments,Rent Plus,active,2024-01-01,,RENTPLUS,true
+CB-0002,PMS-102,RP-1002,555 Boulevard,555 boulevard,Rent Plus,active,2024-03-01,,RENTPLUS,true
+CB-0003,PMS-103,RP-1003,Oak Tree Commons,oak tree commons,Rent Plus,active,2023-06-01,,RENTPLUS,true
+CB-0004,PMS-104,RP-1004,River View Heights,river view heights,Rent Plus,active,2024-01-01,,RENTPLUS,true
+CB-0005,PMS-105,RP-1005,The Grand Reserve,the grand reserve,Rent Plus,active,2024-09-01,,RENTPLUS,true

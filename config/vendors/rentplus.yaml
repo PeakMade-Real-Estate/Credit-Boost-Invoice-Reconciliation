@@ -1,0 +1,36 @@
+vendor_code: rent_plus
+display_name: "Rent Plus"
+
+accepted_file_types:
+  - csv
+  - xlsx
+  - pdf
+
+# Paths are relative to the project root.
+# All may be overridden by explicit kwargs in run_reconciliation().
+property_master_path: data/property_master.csv
+rate_mapping_path: config/rate_mappings/rentplus_rates.csv
+property_aliases_path: config/property_mappings/rentplus_property_aliases.csv
+
+fuzzy_match_threshold: 80
+invoice_tolerance: "0.01"
+balance_tolerance: "0.05"
+charge_code: null
+
+# ------------------------------------------------------------------
+# Description parsing rules (PDF invoices only)
+# ------------------------------------------------------------------
+description:
+  # Regex anchored to end of normalised description; strips the vendor
+  # service suffix so that the remainder is the property display name.
+  service_suffix_regex: "\\s*-\\s*Rent\\s+Plus\\s+Services\\s*$"
+
+  # Zero or more trailing annotations to strip from the property name
+  # after removing the service suffix.  Applied in order.
+  trailing_property_annotations:
+    - "\\s*\\(new\\)\\s*$"
+
+property_extraction:
+  source_column: description          # column whose value is parsed
+  method: remove_service_suffix       # algorithm used
+  failure_severity: BLOCKING          # severity when suffix cannot be found

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Review Property Master – Invoice Reconciliation{% endblock %}
+
+{% block head_extra %}
+<style>
+    .conf-exact   { background-color: #d1e7dd; color: #0a3622; }
+    .conf-fuzzy   { background-color: #fff3cd; color: #664d03; }
+    .conf-none    { background-color: #f8d7da; color: #58151c; }
+    .row-existing { opacity: 0.5; }
+    thead.sticky-top th { background: #f8f9fa; }
+    .input-sm-inline { width: 100%; min-width: 90px; font-size: .8rem; padding: 2px 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Summary banner -->
+<div class="alert alert-info d-flex align-items-center gap-3 mb-3">
+    <i class="bi bi-info-circle-fill fs-4"></i>
+    <div>
+        <strong>{{ new_count }} new {{ 'property' if new_count == 1 else 'properties' }}</strong>
+        found in the invoice.
+        {% if already_count %}<span class="text-muted">({{ already_count }} already in your property master — shown greyed out.)</span>{% endif %}
+        <strong class="{{ 'text-success' if matched_count == new_count else 'text-warning' }}">
+            {{ matched_count }} of {{ new_count }} new
+        </strong>
+        matched to a cash report record.
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('setup.seed_property_master_save') }}" id="reviewForm">
+    <input type="hidden" name="row_count" value="{{ row_count }}">
+
+    <!-- Save mode + action buttons -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-3 align-items-center">
+            <span class="fw-semibold">Save mode:</span>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="radio" name="save_mode"
+                       id="mode_replace" value="replace" checked>
+                <label class="form-check-label" for="mode_replace">
+                    Replace all existing entries
+                    <small class="text-muted">(recommended for first-time setup)</small>
+                </label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="radio" name="save_mode"
+                       id="mode_merge" value="merge">
+                <label class="form-check-label" for="mode_merge">
+                    Add new rows only
+                </label>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    onclick="document.querySelectorAll('[data-new-row] input[type=checkbox]').forEach(c=>c.checked=true)">
+                Select new
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    onclick="document.querySelectorAll('input[type=checkbox][name$=_include]').forEach(c=>c.checked=false)">
+                Deselect all
+            </button>
+            <button type="submit" class="btn btn-warning"
+                    onclick="return confirm('Save {{ new_count }} new properties to property_master.csv?')">
+                <i class="bi bi-floppy me-1"></i>Save to Property Master
+            </button>
+        </div>
+    </div>
+
+    <!-- Review table -->
+    <div class="table-responsive" style="max-height: 72vh; overflow-y: auto;">
+        <table class="table table-sm table-bordered table-hover align-middle mb-0" style="font-size:.82rem">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th style="width:1%"><input type="checkbox" title="Toggle all new"
+                        onchange="document.querySelectorAll('[data-new-row] input[type=checkbox][name$=_include]').forEach(c=>c.checked=this.checked)"></th>
+                    <th>Invoice Property Name</th>
+                    <th>Cash Report Match</th>
+                    <th style="width:7%">Conf.</th>
+                    <th>PMS Property ID</th>
+                    <th>Internal ID</th>
+                    <th>Start Date</th>
+                    <th>Charge Code</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in proposed %}
+            {% set i = loop.index0 %}
+            <tr class="{{ '' if row.is_new else 'row-existing' }}"
+                {{ 'data-new-row' if row.is_new }}>
+                <!-- Include checkbox -->
+                <td class="text-center">
+                    <input type="checkbox" name="row_{{ i }}_include"
+                           {{ 'checked' if row.is_new }}>
+                </td>
+
+                <!-- Invoice name (display + hidden) -->
+                <td>
+                    <strong>{{ row.property_name }}</strong>
+                    {% if not row.is_new %}
+                        <span class="badge bg-secondary ms-1" title="Already in property master">existing</span>
+                    {% endif %}
+                    <input type="hidden" name="row_{{ i }}_property_name"            value="{{ row.property_name }}">
+                    <input type="hidden" name="row_{{ i }}_normalized_property_name" value="{{ row.normalized_property_name }}">
+                    <input type="hidden" name="row_{{ i }}_vendor"                   value="{{ row.vendor }}">
+                </td>
+
+                <!-- Cash report match -->
+                <td class="text-muted">
+                    {{ row.cash_match_name or '—' }}
+                </td>
+
+                <!-- Confidence badge -->
+                <td class="text-center">
+                    {% if row.cash_match_confidence == 100 %}
+                        <span class="badge conf-exact">Exact</span>
+                    {% elif row.cash_match_confidence > 0 %}
+                        <span class="badge conf-fuzzy">{{ row.cash_match_confidence | int }}%</span>
+                    {% else %}
+                        <span class="badge conf-none">None</span>
+                    {% endif %}
+                </td>
+
+                <!-- PMS Property ID (editable) -->
+                <td>
+                    <input type="text" class="form-control input-sm-inline"
+                           name="row_{{ i }}_pms_property_id"
+                           value="{{ row.pms_property_id }}"
+                           placeholder="e.g. 12345">
+                </td>
+
+                <!-- Internal ID (editable) -->
+                <td>
+                    <input type="text" class="form-control input-sm-inline"
+                           name="row_{{ i }}_internal_property_id"
+                           value="{{ row.internal_property_id }}"
+                           placeholder="CB-XXXX">
+                </td>
+
+                <!-- Program Start Date (editable) -->
+                <td>
+                    <input type="date" class="form-control input-sm-inline"
+                           name="row_{{ i }}_program_start_date"
+                           value="{{ row.program_start_date }}">
+                </td>
+
+                <!-- Charge Code (editable) -->
+                <td>
+                    <input type="text" class="form-control input-sm-inline"
+                           name="row_{{ i }}_charge_code"
+                           value="{{ row.charge_code }}"
+                           placeholder="e.g. RENTPLUS">
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Sticky save button at bottom -->
+    <div class="d-flex justify-content-end mt-3">
+        <a href="{{ url_for('setup.seed_property_master') }}" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left me-1"></i>Start Over
+        </a>
+        <button type="submit" class="btn btn-warning"
+                onclick="return confirm('Save {{ new_count }} new properties to property_master.csv?')">
+            <i class="bi bi-floppy me-1"></i>Save to Property Master
+        </button>
+    </div>
+</form>
+{% endblock %}

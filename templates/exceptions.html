@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Exceptions – {{ run_id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h3 class="mb-0">Exception Review</h3>
+        <div class="text-muted small">
+            <code>{{ run_id }}</code> &mdash;
+            {{ result.get('reporting_month') }} &mdash; {{ result.get('vendor') }}
+        </div>
+    </div>
+    <a href="{{ url_for('reconciliation.review', run_id=run_id) }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Review
+    </a>
+</div>
+
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Action required.</strong>
+    The items below require manual review before the reconciliation can be approved.
+    Resolve each exception and click <strong>Apply Overrides &amp; Re-run</strong>.
+    All overrides are recorded in the audit trail.
+</div>
+
+<form method="POST" action="{{ url_for('reconciliation.resolve_exceptions', run_id=run_id) }}"
+      id="exceptionsForm">
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Property exceptions                                                 -->
+    <!-- ------------------------------------------------------------------ -->
+    {% set prop_exc = result.get('property_exceptions', []) %}
+    {% if prop_exc %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning bg-opacity-25 fw-semibold">
+            <i class="bi bi-buildings me-2"></i>Property Exceptions
+            <span class="badge bg-warning text-dark ms-1">{{ prop_exc | length }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Severity</th>
+                        <th>Type</th>
+                        <th>Invoice Property</th>
+                        <th>Message</th>
+                        <th>Resolve / Map to</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for exc in prop_exc %}
+                <tr class="{{ 'table-danger' if exc.severity == 'BLOCKING'
+                    else 'table-warning' if exc.severity == 'WARNING' else '' }}">
+                    <td>
+                        <span class="badge {{ 'bg-danger' if exc.severity == 'BLOCKING'
+                            else 'bg-warning text-dark' if exc.severity == 'WARNING'
+                            else 'bg-info text-dark' }}">
+                            {{ exc.severity }}
+                        </span>
+                    </td>
+                    <td class="small">{{ (exc.exception_type or '') | replace('_', ' ') | title }}</td>
+                    <td class="small">
+                        {{ exc.invoice_property_name or '—' }}
+                        {% if exc.invoice_vendor_property_id %}
+                            <br><code class="text-muted">{{ exc.invoice_vendor_property_id }}</code>
+                        {% endif %}
+                        {% if exc.confidence %}
+                            <br><span class="text-muted small">Match confidence: {{ "%.0f%%" | format(exc.confidence * 100) }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-muted">{{ exc.message | truncate(120) }}</td>
+                    <td>
+                        {% if exc.requires_user_review and exc.invoice_property_name %}
+                        <select class="form-select form-select-sm"
+                                name="property_override_{{ exc.invoice_property_name | urlencode }}"
+                                style="min-width: 200px;">
+                            <option value="">— Keep unmatched —</option>
+                            {% if exc.suggested_property_id %}
+                            <option value="{{ exc.suggested_property_id }}" selected>
+                                ★ {{ exc.suggested_property_name }} ({{ exc.suggested_property_id }})
+                            </option>
+                            {% endif %}
+                            {% for prop in properties %}
+                                {% if prop.internal_property_id != exc.suggested_property_id %}
+                                <option value="{{ prop.internal_property_id }}">
+                                    {{ prop.property_name }} ({{ prop.internal_property_id }})
+                                </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <span class="text-muted small">No action needed</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if exc.invoice_property_name %}
+                        <input type="text" class="form-control form-control-sm"
+                               name="note_{{ exc.invoice_property_name | urlencode }}"
+                               placeholder="Optional note" style="min-width: 140px;">
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Rate exceptions                                                     -->
+    <!-- ------------------------------------------------------------------ -->
+    {% set rate_exc = result.get('rate_exceptions', []) %}
+    {% if rate_exc %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-danger bg-opacity-10 fw-semibold">
+            <i class="bi bi-tag me-2 text-danger"></i>Rate Exceptions
+            <span class="badge bg-danger ms-1">{{ rate_exc | length }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Severity</th>
+                        <th>Property</th>
+                        <th>Unit Price</th>
+                        <th>Source Row</th>
+                        <th>Message</th>
+                        <th>Assign Rate Rule</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for exc in rate_exc %}
+                <tr class="{{ 'table-danger' if exc.severity == 'BLOCKING' else 'table-warning' }}">
+                    <td>
+                        <span class="badge {{ 'bg-danger' if exc.severity == 'BLOCKING'
+                            else 'bg-warning text-dark' }}">{{ exc.severity }}</span>
+                    </td>
+                    <td class="small">{{ exc.invoice_property_name or '—' }}</td>
+                    <td class="small">{{ exc.invoice_unit_price or '—' }}</td>
+                    <td class="small">{{ exc.source_row or '—' }}</td>
+                    <td class="small text-muted">{{ exc.message | truncate(100) }}</td>
+                    <td>
+                        {% if exc.source_row %}
+                        <select class="form-select form-select-sm"
+                                name="rate_override_{{ exc.source_row }}"
+                                style="min-width: 220px;">
+                            <option value="">— Keep unmatched —</option>
+                            {% if exc.suggested_rate_rule_id %}
+                            <option value="{{ exc.suggested_rate_rule_id }}" selected>
+                                ★ {{ exc.suggested_rate_rule_id }}
+                            </option>
+                            {% endif %}
+                            {% for rule in rate_rules %}
+                            <option value="{{ rule.rate_rule_id }}">
+                                {{ rule.rate_rule_id }} – {{ rule.rate_name }}
+                                (${{ rule.invoice_unit_price }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not prop_exc and not rate_exc %}
+    <div class="alert alert-success">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        No exceptions requiring manual resolution.
+    </div>
+    {% endif %}
+
+    <!-- Submit -->
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <a href="{{ url_for('reconciliation.review', run_id=run_id) }}"
+           class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary" id="resolveBtn">
+            <i class="bi bi-arrow-repeat me-1"></i>Apply Overrides &amp; Re-run
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("exceptionsForm").addEventListener("submit", function () {
+    const btn = document.getElementById("resolveBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Re-running…';
+});
+</script>
+{% endblock %}

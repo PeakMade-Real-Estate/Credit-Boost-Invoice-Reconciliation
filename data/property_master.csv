@@ -1,0 +1,73 @@
+internal_property_id,pms_property_id,vendor_property_id,property_name,normalized_property_name,vendor,program_status,program_start_date,program_end_date,charge_code,active
+CB-0001,,,48 West,48 west,Rent Plus,active,,,RentPlus,true
+CB-0002,,,555 Boulevard,555 boulevard,Rent Plus,active,,,RentPlus,true
+CB-0003,,,698 Prospect,698 prospect,Rent Plus,active,,,RentPlus,true
+CB-0004,,,Auden Upstate,auden upstate,Rent Plus,active,,,RentPlus,true
+CB-0005,,,Beach Club,beach club,Rent Plus,active,,,RentPlus,true
+CB-0006,,,Bixby Kennesaw,bixby kennesaw,Rent Plus,active,,,RentPlus,true
+CB-0007,,,Brooks at Stillwater,brooks at stillwater,Rent Plus,active,,,RentPlus,true
+CB-0008,,,Campus Creek Cottages,campus creek cottages,Rent Plus,active,,,RentPlus,true
+CB-0009,,,Campus Creek Townhomes,campus creek townhomes,Rent Plus,active,,,RentPlus,true
+CB-0010,,,Castleberry Park,castleberry park,Rent Plus,active,,,RentPlus,true
+CB-0011,,,Chateau on Wells,chateau on wells,Rent Plus,active,,,RentPlus,true
+CB-0012,,,Claremont Collegiate Apartments,claremont collegiate apartments,Rent Plus,active,,,RentPlus,true
+CB-0013,,,Clemson Edge,clemson edge,Rent Plus,active,,,RentPlus,true
+CB-0014,,,Cobalt Row,cobalt row,Rent Plus,active,,,RentPlus,true
+CB-0015,,,College Town Apartments,college town apartments,Rent Plus,active,,,RentPlus,true
+CB-0016,,,Cottages at Tucson,cottages at tucson,Rent Plus,active,,,RentPlus,true
+CB-0017,,,Ensemble at Northridge,ensemble at northridge,Rent Plus,active,,,RentPlus,true
+CB-0018,,,Everly on The Loop,everly on the loop,Rent Plus,active,,,RentPlus,true
+CB-0019,,,Fifteen51,fifteen51,Rent Plus,active,,,RentPlus,true
+CB-0020,,,Hamilton Court,hamilton court,Rent Plus,active,,,RentPlus,true
+CB-0021,,,Hannah Townhomes & Lofts,hannah townhomes & lofts,Rent Plus,active,,,RentPlus,true
+CB-0022,,,Hawks Landing,hawks landing,Rent Plus,active,,,RentPlus,true
+CB-0023,,,Merced Station,merced station,Rent Plus,active,,,RentPlus,true
+CB-0024,,,Muse on Main,muse on main,Rent Plus,active,,,RentPlus,true
+CB-0025,,,Paloma Kent,paloma kent,Rent Plus,active,,,RentPlus,true
+CB-0026,,,Paloma Raleigh,paloma raleigh,Rent Plus,active,,,RentPlus,true
+CB-0027,,,Paloma West Midtown,paloma west midtown,Rent Plus,active,,,RentPlus,true
+CB-0028,,,Post Chicago,post chicago,Rent Plus,active,,,RentPlus,true
+CB-0029,,,Proxi Lawrence,proxi lawrence,Rent Plus,active,,,RentPlus,true
+CB-0030,,,Rittenhouse Station,rittenhouse station,Rent Plus,active,,,RentPlus,true
+CB-0031,,,Sky Garden Apartments,sky garden apartments,Rent Plus,active,,,RentPlus,true
+CB-0032,,,SoCam 290,socam 290,Rent Plus,active,,,RentPlus,true
+CB-0033,,,Solaire Oxford,solaire oxford,Rent Plus,active,,,RentPlus,true
+CB-0034,,,Stadium View,stadium view,Rent Plus,active,,,RentPlus,true
+CB-0035,,,Station 42,station 42,Rent Plus,active,,,RentPlus,true
+CB-0036,,,Straits Row,straits row,Rent Plus,active,,,RentPlus,true
+CB-0037,,,Tech Village,tech village,Rent Plus,active,,,RentPlus,true
+CB-0038,,,The Abbot,the abbot,Rent Plus,active,,,RentPlus,true
+CB-0039,,,The Avenue,the avenue,Rent Plus,active,,,RentPlus,true
+CB-0040,,,The Bluff at Waterworks Landing,the bluff at waterworks landing,Rent Plus,active,,,RentPlus,true
+CB-0041,,,The Carmin,the carmin,Rent Plus,active,,,RentPlus,true
+CB-0042,,,The Cottages of College Station,the cottages of college station,Rent Plus,active,,,RentPlus,true
+CB-0043,,,The Crossings,the crossings,Rent Plus,active,,,RentPlus,true
+CB-0044,,,The Davy,the davy,Rent Plus,active,,,RentPlus,true
+CB-0045,,,The Essex,the essex,Rent Plus,active,,,RentPlus,true
+CB-0046,,,The Finmore at 241,the finmore at 241,Rent Plus,active,,,RentPlus,true
+CB-0047,,,The Gates,the gates,Rent Plus,active,,,RentPlus,true
+CB-0048,,,The Highlands,the highlands,Rent Plus,active,,,RentPlus,true
+CB-0049,,,The Hive,the hive,Rent Plus,active,,,RentPlus,true
+CB-0050,,,The Landing Apartments,the landing apartments,Rent Plus,active,,,RentPlus,true
+CB-0051,,,The Nine at Memphis,the nine at memphis,Rent Plus,active,,,RentPlus,true
+CB-0052,,,The Printing House,the printing house,Rent Plus,active,,,RentPlus,true
+CB-0053,,,The Ranch,the ranch,Rent Plus,active,,,RentPlus,true
+CB-0054,,,The Republic,the republic,Rent Plus,active,,,RentPlus,true
+CB-0055,,,The Residences at 7th,the residences at 7th,Rent Plus,active,,,RentPlus,true
+CB-0056,,,The Ridge,the ridge,Rent Plus,active,,,RentPlus,true
+CB-0057,,,The Summit at Coates Run,the summit at coates run,Rent Plus,active,,,RentPlus,true
+CB-0058,,,The Timbers,the timbers,Rent Plus,active,,,RentPlus,true
+CB-0059,,,The Tower,the tower,Rent Plus,active,,,RentPlus,true
+CB-0060,,,The U Davis,the u davis,Rent Plus,active,,,RentPlus,true
+CB-0061,,,The Valley,the valley,Rent Plus,active,,,RentPlus,true
+CB-0062,,,The View,the view,Rent Plus,active,,,RentPlus,true
+CB-0063,,,Theory Gainesville,theory gainesville,Rent Plus,active,,,RentPlus,true
+CB-0064,,,Theory Syracuse,theory syracuse,Rent Plus,active,,,RentPlus,true
+CB-0065,,,Theory U District,theory u district,Rent Plus,active,,,RentPlus,true
+CB-0066,,,Trifecta,trifecta,Rent Plus,active,,,RentPlus,true
+CB-0067,,,University Edge Akron,university edge akron,Rent Plus,active,,,RentPlus,true
+CB-0068,,,University Gateway,university gateway,Rent Plus,active,,,RentPlus,true
+CB-0069,,,Uno on Chestnut,uno on chestnut,Rent Plus,active,,,RentPlus,true
+CB-0070,,,Valley Falls Apartments,valley falls apartments,Rent Plus,active,,,RentPlus,true
+CB-0071,,,Villas on Rio,villas on rio,Rent Plus,active,,,RentPlus,true
+CB-0072,,,i5 Wynwood,i5 wynwood,Rent Plus,active,,,RentPlus,true

@@ -1,0 +1,9 @@
+property_id,property_description,quantity,unit_price,amount
+RP-1001,Sunrise Apartments,10,7.85,78.50
+RP-1002,555 Blvd,5,15.70,78.50
+RP-1003,Oak Tree Commons,8,7.85,62.80
+RP-1003,Oak Tree Commons Legacy,3,6.50,19.50
+RP-1004,River View Heights,4,23.55,94.20
+RP-1005,The Grand Reserve,7,31.40,219.80
+RP-1001,Sunrise Apartments Reversal,1,-7.85,-7.85
+,,,,545.45

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Upload Files – Invoice Reconciliation{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-upload me-2"></i>New Reconciliation</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('reconciliation.process_upload') }}"
+                      enctype="multipart/form-data" id="uploadForm" novalidate>
+
+                    <!-- Reporting Month -->
+                    <div class="mb-3">
+                        <label for="reporting_month" class="form-label fw-semibold">
+                            Reporting Month <span class="text-danger">*</span>
+                        </label>
+                        <input type="month" class="form-control" id="reporting_month"
+                               name="reporting_month" required
+                               placeholder="YYYY-MM">
+                        <div class="form-text">Select the month this invoice covers.</div>
+                    </div>
+
+                    <!-- Vendor -->
+                    <div class="mb-3">
+                        <label for="vendor" class="form-label fw-semibold">
+                            Vendor <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="vendor" name="vendor" required>
+                            <option value="" disabled selected>— Select vendor —</option>
+                            {% for v in vendors %}
+                                <option value="{{ v }}">{{ v }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Invoice file -->
+                    <div class="mb-3">
+                        <label for="invoice_file" class="form-label fw-semibold">
+                            Vendor Invoice <span class="text-danger">*</span>
+                        </label>
+                        <input class="form-control" type="file" id="invoice_file"
+                               name="invoice_file"
+                               accept=".csv,.xlsx,.pdf" required>
+                        <div class="form-text">Accepted formats: CSV, XLSX, PDF (max 50 MB).</div>
+                    </div>
+
+                    <!-- Cash report file -->
+                    <div class="mb-3">
+                        <label for="cash_report_file" class="form-label fw-semibold">
+                            Entrata Cash-Received Report <span class="text-danger">*</span>
+                        </label>
+                        <input class="form-control" type="file" id="cash_report_file"
+                               name="cash_report_file"
+                               accept=".csv,.xlsx" required>
+                        <div class="form-text">
+                            Receipts by Charge Code report, CSV or XLSX.
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="reset" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle me-1"></i>Reset
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="bi bi-play-fill me-1"></i>Start Reconciliation
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Recent runs table -->
+        {% if recent_runs %}
+        <div class="card shadow-sm mt-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 text-muted">Recent Runs</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Run ID</th>
+                            <th>Month</th>
+                            <th>Vendor</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in recent_runs %}
+                        <tr>
+                            <td><code class="small">{{ run.run_id }}</code></td>
+                            <td>{{ run.reporting_month }}</td>
+                            <td>{{ run.vendor }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-success' if run.status == 'passed'
+                                    else 'bg-warning text-dark' if run.status == 'passed_with_warnings'
+                                    else 'bg-danger' if run.status == 'failed'
+                                    else 'bg-secondary' }}">
+                                    {{ run.status | replace('_', ' ') | title }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('reconciliation.review', run_id=run.run_id) }}"
+                                   class="btn btn-outline-primary btn-sm">View</a>
+                                <form method="POST"
+                                      action="{{ url_for('reconciliation.delete_run_route', run_id=run.run_id) }}"
+                                      class="d-inline"
+                                      onsubmit="return confirm('Delete run {{ run.run_id }}?\n\nThis will permanently remove the database record and all associated output files.')">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("uploadForm").addEventListener("submit", function () {
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
+});
+</script>
+{% endblock %}

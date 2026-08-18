@@ -1,0 +1,40 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- Virtual environment ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Environment variables ---
+.env
+
+# --- Database ---
+*.db
+*.sqlite
+
+# --- Uploaded files (stored outside static) ---
+uploads/
+outputs/
+
+# --- pytest ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- IDEs ---
+.vscode/settings.json
+.idea/
+
+# --- OS ---
+.DS_Store
+Thumbs.db

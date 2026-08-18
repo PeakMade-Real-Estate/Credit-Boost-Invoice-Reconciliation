@@ -1,0 +1,39 @@
+description: "Entrata Receipts by Charge Code report"
+format: csv_xlsx
+
+# First candidate that matches a column heading wins (case-insensitive,
+# spaces normalised to underscores).
+column_map:
+  property_name:
+    - property
+    - property name
+    - property_name
+    - unit
+    - community
+  pms_property_id:
+    - property id
+    - property_id
+    - property code
+    - prop id
+    - pms_property_id
+    - unit id
+  charge_code:
+    - charge code
+    - charge_code
+    - ar code
+    - ar_code
+    - code
+    - type
+  cash_received:
+    - cash collected
+    - total cash collections
+    - cash received
+    - cash_received
+    - receipts
+    - collected
+    - payments
+  adjustment_amount:
+    - adjustment
+    - adjustment amount
+    - adjustments
+    - adj
