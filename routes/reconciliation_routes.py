@@ -255,6 +255,13 @@ def process_upload():
     )
 
     # --- Redirect ---
+    if result.status == ReconciliationStatus.FAILED:
+        flash(
+            f"Reconciliation failed ({run_id}). "
+            "Check that you uploaded the correct files and try again.",
+            "danger",
+        )
+        return redirect(url_for("reconciliation.upload"))
     if result.has_blocking_exceptions:
         return redirect(url_for("reconciliation.exceptions", run_id=run_id))
     return redirect(url_for("reconciliation.review", run_id=run_id))
@@ -568,3 +575,166 @@ def download(run_id: str, file_type: str):
             ".spreadsheetml.sheet"
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Resident Charges Reconciliation
+# ---------------------------------------------------------------------------
+
+
+@bp.route("/resident-charges", methods=["GET"])
+def resident_charges_upload():
+    """Render the Resident Charges upload form."""
+    recent_runs = [r for r in list_runs(limit=20) if r.get("run_type") == "resident_charges"]
+    return render_template("resident_charges_upload.html", recent_runs=recent_runs)
+
+
+@bp.route("/resident-charges/process", methods=["POST"])
+def resident_charges_process():
+    """Handle Resident Charges upload, run reconciliation, redirect to results."""
+    from services.resident_charges_reconciliation_service import (
+        run_resident_charges_reconciliation,
+    )
+
+    reporting_month = request.form.get("reporting_month", "").strip()
+    errors = []
+    if not reporting_month:
+        errors.append("Reporting month is required.")
+
+    charges_file = request.files.get("charges_file")
+    invoice_file = request.files.get("invoice_file")
+
+    if not charges_file or charges_file.filename == "":
+        errors.append("Resident Charges file is required.")
+    elif Path(charges_file.filename).suffix.lower().lstrip(".") not in {"xlsx"}:
+        errors.append("Resident Charges file must be XLSX.")
+
+    if not invoice_file or invoice_file.filename == "":
+        errors.append("Boom invoice file is required.")
+    elif not _allowed_file(invoice_file.filename):
+        errors.append("Boom invoice file must be CSV or XLSX.")
+
+    if errors:
+        for err in errors:
+            flash(err, "danger")
+        return redirect(url_for("reconciliation.resident_charges_upload"))
+
+    charges_path, charges_name = _save_upload(charges_file, "cash_reports")
+    invoice_path, invoice_name = _save_upload(invoice_file, "invoices")
+
+    vendor = "Credit Boost powered by Boom"
+    seq = get_next_sequence(reporting_month, vendor)
+    run_id = ReconciliationRun.generate_run_id(reporting_month, vendor, seq)
+    session["run_id"] = run_id
+
+    try:
+        result = run_resident_charges_reconciliation(
+            charges_file_path=charges_path,
+            invoice_file_path=invoice_path,
+            reporting_month=reporting_month,
+            run_id=run_id,
+            vendor=vendor,
+            charges_file_name=charges_name,
+            invoice_file_name=invoice_name,
+        )
+    except Exception as exc:
+        import traceback
+        logger.error(
+            "Resident charges reconciliation error for run %s: %s\n%s",
+            run_id, exc, traceback.format_exc(),
+        )
+        flash(f"Reconciliation failed: {exc!r} — see server log for details.", "danger")
+        return redirect(url_for("reconciliation.resident_charges_upload"))
+
+    # Persist result JSON
+    output_folder = current_app.config["OUTPUT_FOLDER"]
+    os.makedirs(output_folder, exist_ok=True)
+    json_path = str(Path(output_folder) / f"{run_id}_rc_result.json")
+    from models.schemas import result_to_json as _to_json
+    with open(json_path, "w", encoding="utf-8") as fh:
+        fh.write(_to_json(result))
+
+    # Persist run metadata (reuse ReconciliationRun, storing charges file
+    # in cash_report_stored_path for uniform DB handling)
+    run_meta = ReconciliationRun(
+        run_id=run_id,
+        reporting_month=reporting_month,
+        vendor=vendor,
+        invoice_file_name=invoice_name,
+        cash_report_file_name=charges_name,
+        invoice_file_hash="",
+        cash_report_file_hash="",
+        uploaded_by=session.get("user", "web_user"),
+        uploaded_date=datetime.utcnow(),
+        status=ReconciliationStatus.PASSED
+        if (result.total_charged_not_billed + result.total_billed_not_charged) == 0
+        else ReconciliationStatus.PASSED_WITH_WARNINGS,
+        invoice_stored_path=invoice_path,
+        cash_report_stored_path=charges_path,
+        exception_count=result.total_charged_not_billed + result.total_billed_not_charged,
+        blocking_exception_count=0,
+        run_type="resident_charges",
+    )
+    save_run(run_meta, result_json_path=json_path)
+
+    logger.info("Resident charges run complete: run_id=%s", run_id)
+    return redirect(url_for("reconciliation.resident_charges_results", run_id=run_id))
+
+
+@bp.route("/resident-charges/results/<run_id>", methods=["GET"])
+def resident_charges_results(run_id: str):
+    """Display the Resident Charges reconciliation results."""
+    run_meta = get_run(run_id)
+    if not run_meta or run_meta.get("run_type") != "resident_charges":
+        flash("Resident charges run not found.", "danger")
+        return redirect(url_for("reconciliation.resident_charges_upload"))
+
+    json_path = run_meta.get("result_json_path", "")
+    if not json_path or not Path(json_path).exists():
+        flash("Result data not found.", "danger")
+        return redirect(url_for("reconciliation.resident_charges_upload"))
+
+    import json as _json
+    with open(json_path, encoding="utf-8") as fh:
+        result_data = _json.load(fh)
+
+    return render_template(
+        "resident_charges_results.html",
+        run_id=run_id,
+        result=result_data,
+        run_meta=run_meta,
+    )
+
+
+@bp.route("/resident-charges/download/<run_id>", methods=["GET"])
+def resident_charges_download(run_id: str):
+    """Generate and serve the Resident Charges reconciliation Excel workbook."""
+    run_meta = get_run(run_id)
+    if not run_meta or run_meta.get("run_type") != "resident_charges":
+        abort(404)
+
+    json_path = run_meta.get("result_json_path", "")
+    if not json_path or not Path(json_path).exists():
+        abort(404)
+
+    import json as _json
+    with open(json_path, encoding="utf-8") as fh:
+        result_data = _json.load(fh)
+
+    from services.output_generator import generate_resident_charges_workbook
+    try:
+        xlsx_path = generate_resident_charges_workbook(
+            result_data, current_app.config["OUTPUT_FOLDER"], run_id
+        )
+    except Exception as exc:
+        logger.error("Resident charges workbook generation failed: %s", exc, exc_info=True)
+        flash("Download generation failed.  Please contact support.", "danger")
+        return redirect(url_for("reconciliation.resident_charges_results", run_id=run_id))
+
+    return send_file(
+        xlsx_path,
+        as_attachment=True,
+        download_name=f"{run_id}_resident_charges_reconciliation.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+

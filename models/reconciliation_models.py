@@ -360,6 +360,7 @@ class ReconciliationRun:
     exception_count: int = 0
     blocking_exception_count: int = 0
     notes: str = ""
+    run_type: str = "invoice_cash"   # "invoice_cash" | "resident_charges"
 
     @staticmethod
     def generate_run_id(

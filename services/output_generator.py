@@ -573,3 +573,182 @@ def _safe_value(value):
     if hasattr(value, "value"):  # Enum
         return value.value
     return value
+
+
+# ---------------------------------------------------------------------------
+# Resident Charges reconciliation workbook
+# ---------------------------------------------------------------------------
+
+
+def generate_resident_charges_workbook(
+    result_data: dict,
+    output_folder: str,
+    run_id: str,
+) -> str:
+    """Write a Resident Charges reconciliation XLSX and return its path.
+
+    Produces two sheets:
+      1. **Summary** – one row per property with charged / billed / matched counts.
+      2. **Discrepancies** – one row per discrepancy (charged-not-billed and
+         billed-not-charged), with type, property, unit, resident, and amounts.
+
+    Args:
+        result_data:   The result dict loaded from the stored JSON.
+        output_folder: Folder where the file is written.
+        run_id:        Run identifier used in the filename.
+
+    Returns:
+        Absolute path to the generated XLSX file.
+    """
+    if not _OPENPYXL_AVAILABLE:
+        raise RuntimeError("openpyxl is not installed. Run: pip install openpyxl")
+
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    os.makedirs(output_folder, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    xlsx_path = str(
+        Path(output_folder) / f"{run_id}_resident_charges_reconciliation_{timestamp}.xlsx"
+    )
+
+    wb = Workbook()
+
+    # ------------------------------------------------------------------
+    # Sheet 1 – Summary
+    # ------------------------------------------------------------------
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+
+    hdr_fill = PatternFill("solid", fgColor=_HEADER_FILL)
+    hdr_font = Font(color=_HEADER_FONT, bold=True)
+    alt_fill = PatternFill("solid", fgColor=_ALT_ROW_FILL)
+    warn_fill = PatternFill("solid", fgColor=_WARNING_FILL)
+    ok_fill = PatternFill("solid", fgColor=_OK_FILL)
+    bold_font = Font(bold=True)
+    currency_fmt = _CURRENCY_FMT
+
+    summary_headers = [
+        "Property",
+        "Residents Charged",
+        "Residents Billed",
+        "Matched",
+        "Charged Not Billed",
+        "Billed Not Charged",
+        "Total Charged ($)",
+        "Total Billed ($)",
+    ]
+
+    ws_summary.append(summary_headers)
+    for cell in ws_summary[1]:
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+    summaries = result_data.get("property_summaries", [])
+    for idx, s in enumerate(summaries, start=2):
+        has_discrepancy = (
+            s.get("charged_not_billed_count", 0) > 0
+            or s.get("billed_not_charged_count", 0) > 0
+        )
+        row = [
+            s.get("property_name", ""),
+            s.get("residents_charged", 0),
+            s.get("residents_billed", 0),
+            s.get("matched_count", 0),
+            s.get("charged_not_billed_count", 0),
+            s.get("billed_not_charged_count", 0),
+            float(s.get("total_charged_amount", 0) or 0),
+            float(s.get("total_billed_amount", 0) or 0),
+        ]
+        ws_summary.append(row)
+        row_fill = warn_fill if has_discrepancy else (alt_fill if idx % 2 == 0 else None)
+        if row_fill:
+            for cell in ws_summary[idx]:
+                cell.fill = row_fill
+        # Format currency columns
+        for col in (7, 8):
+            ws_summary.cell(row=idx, column=col).number_format = currency_fmt
+
+    # Total row
+    total_row_idx = len(summaries) + 2
+    totals = [
+        "TOTAL",
+        sum(s.get("residents_charged", 0) for s in summaries),
+        sum(s.get("residents_billed", 0) for s in summaries),
+        sum(s.get("matched_count", 0) for s in summaries),
+        sum(s.get("charged_not_billed_count", 0) for s in summaries),
+        sum(s.get("billed_not_charged_count", 0) for s in summaries),
+        round(sum(float(s.get("total_charged_amount", 0) or 0) for s in summaries), 2),
+        round(sum(float(s.get("total_billed_amount", 0) or 0) for s in summaries), 2),
+    ]
+    ws_summary.append(totals)
+    for cell in ws_summary[total_row_idx]:
+        cell.font = bold_font
+        cell.fill = PatternFill("solid", fgColor=_SUMMARY_FILL)
+    for col in (7, 8):
+        ws_summary.cell(row=total_row_idx, column=col).number_format = currency_fmt
+
+    # Auto-fit columns
+    for col_cells in ws_summary.columns:
+        max_len = max(len(str(c.value or "")) for c in col_cells)
+        ws_summary.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 40)
+
+    # ------------------------------------------------------------------
+    # Sheet 2 – Discrepancies
+    # ------------------------------------------------------------------
+    ws_disc = wb.create_sheet("Discrepancies")
+
+    disc_headers = [
+        "Type",
+        "Property",
+        "Unit",
+        "Resident Name",
+        "Lease Status",
+        "Charged Amount ($)",
+        "Billed Amount ($)",
+    ]
+
+    ws_disc.append(disc_headers)
+    for cell in ws_disc[1]:
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+    _TYPE_LABELS = {
+        "charged_not_billed": "Charged, Not Billed",
+        "billed_not_charged": "Billed, Not Charged",
+    }
+    _TYPE_FILLS = {
+        "charged_not_billed": PatternFill("solid", fgColor=_WARNING_FILL),
+        "billed_not_charged": PatternFill("solid", fgColor=_ERROR_FILL),
+    }
+
+    discrepancies = result_data.get("discrepancies", [])
+    for idx, d in enumerate(discrepancies, start=2):
+        dtype = d.get("discrepancy_type", "")
+        row = [
+            _TYPE_LABELS.get(dtype, dtype),
+            d.get("property_name", ""),
+            d.get("unit", ""),
+            d.get("resident_name", ""),
+            d.get("lease_status", ""),
+            float(d.get("charged_amount", 0) or 0),
+            float(d.get("billed_amount", 0) or 0),
+        ]
+        ws_disc.append(row)
+        row_fill = _TYPE_FILLS.get(dtype)
+        if row_fill:
+            for cell in ws_disc[idx]:
+                cell.fill = row_fill
+        for col in (6, 7):
+            ws_disc.cell(row=idx, column=col).number_format = currency_fmt
+
+    # Auto-fit columns
+    for col_cells in ws_disc.columns:
+        max_len = max(len(str(c.value or "")) for c in col_cells)
+        ws_disc.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)
+
+    wb.save(xlsx_path)
+    logger.info("Resident charges workbook written: %s", xlsx_path)
+    return xlsx_path
+

@@ -3,8 +3,8 @@
 
 {% block content %}
 {% set status = result.get('status', '') %}
-{% set totals = result.get('portfolio_totals', {}) %}
-{% set summary = result.get('invoice_summary', {}) %}
+{% set totals = result.get('portfolio_totals') or {} %}
+{% set summary = result.get('invoice_summary') or {} %}
 
 <!-- Page header -->
 <div class="d-flex align-items-center justify-content-between mb-4">

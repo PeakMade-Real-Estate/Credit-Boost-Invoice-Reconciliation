@@ -53,11 +53,15 @@ def init_db(db_path: Optional[str] = None) -> None:
 
     with _connect() as conn:
         conn.executescript(_DDL)
-        # Migration: add column if database predates this field
-        try:
-            conn.execute("ALTER TABLE reconciliation_runs ADD COLUMN reconciliation_csv_path TEXT")
-        except Exception:
-            pass  # Column already exists
+        # Migrations: add columns that predate the current schema
+        for migration_sql in [
+            "ALTER TABLE reconciliation_runs ADD COLUMN reconciliation_csv_path TEXT",
+            "ALTER TABLE reconciliation_runs ADD COLUMN run_type TEXT DEFAULT 'invoice_cash'",
+        ]:
+            try:
+                conn.execute(migration_sql)
+            except Exception:
+                pass  # Column already exists
     logger.info("Database initialised at %s", _DB_PATH)
 
 
@@ -81,7 +85,8 @@ CREATE TABLE IF NOT EXISTS reconciliation_runs (
     exception_count          INTEGER DEFAULT 0,
     blocking_exception_count INTEGER DEFAULT 0,
     notes                    TEXT,
-    result_json_path         TEXT
+    result_json_path         TEXT,
+    run_type                 TEXT DEFAULT 'invoice_cash'
 );
 
 CREATE TABLE IF NOT EXISTS manual_overrides (
@@ -127,8 +132,8 @@ def save_run(run: ReconciliationRun, result_json_path: str = "") -> None:
                 accounting_output_path, audit_output_path,
                 reconciliation_csv_path,
                 exception_count, blocking_exception_count,
-                notes, result_json_path
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                notes, result_json_path, run_type
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 run.run_id,
@@ -150,6 +155,7 @@ def save_run(run: ReconciliationRun, result_json_path: str = "") -> None:
                 run.blocking_exception_count,
                 run.notes,
                 result_json_path,
+                getattr(run, 'run_type', 'invoice_cash'),
             ),
         )
     logger.info("Saved run: %s  status=%s", run.run_id, run.status.value)

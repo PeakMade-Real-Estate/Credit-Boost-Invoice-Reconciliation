@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Resident Charges Reconciliation – Upload{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-person-check me-2"></i>Resident Charges Reconciliation
+                </h4>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted mb-4">
+                    Cross-reference the Entrata <strong>Resident Charges</strong> report against the
+                    <strong>Boom invoice export</strong> to identify residents who were charged but not
+                    billed, and residents who were billed but not charged.
+                </p>
+
+                <form method="POST" action="{{ url_for('reconciliation.resident_charges_process') }}"
+                      enctype="multipart/form-data" id="rcForm" novalidate>
+
+                    <!-- Reporting Month -->
+                    <div class="mb-3">
+                        <label for="reporting_month" class="form-label fw-semibold">
+                            Reporting Month <span class="text-danger">*</span>
+                        </label>
+                        <input type="month" class="form-control" id="reporting_month"
+                               name="reporting_month" required placeholder="YYYY-MM">
+                        <div class="form-text">Select the month the charges cover.</div>
+                    </div>
+
+                    <!-- Resident Charges file -->
+                    <div class="mb-3">
+                        <label for="charges_file" class="form-label fw-semibold">
+                            Resident Charges Report (XLSX) <span class="text-danger">*</span>
+                        </label>
+                        <input class="form-control" type="file" id="charges_file"
+                               name="charges_file" accept=".xlsx" required>
+                        <div class="form-text">
+                            Entrata <em>Resident Charges</em> workbook — one sheet per property.
+                        </div>
+                    </div>
+
+                    <!-- Boom invoice file -->
+                    <div class="mb-3">
+                        <label for="invoice_file" class="form-label fw-semibold">
+                            Boom Invoice Export <span class="text-danger">*</span>
+                        </label>
+                        <input class="form-control" type="file" id="invoice_file"
+                               name="invoice_file" accept=".csv,.xlsx" required>
+                        <div class="form-text">
+                            Boom transaction export file, CSV or XLSX.
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('reconciliation.upload') }}"
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>Invoice Reconciliation
+                        </a>
+                        <div class="d-flex gap-2">
+                            <button type="reset" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-1"></i>Reset
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">
+                                <i class="bi bi-play-fill me-1"></i>Run Check
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Recent runs table -->
+        {% if recent_runs %}
+        <div class="card shadow-sm mt-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 text-muted">Recent Resident Charges Runs</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Run ID</th>
+                            <th>Month</th>
+                            <th>Discrepancies</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in recent_runs %}
+                        <tr>
+                            <td><code class="small">{{ run.run_id }}</code></td>
+                            <td>{{ run.reporting_month }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-success' if run.exception_count == 0 else 'bg-warning text-dark' }}">
+                                    {{ run.exception_count }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('reconciliation.resident_charges_results', run_id=run.run_id) }}"
+                                   class="btn btn-outline-primary btn-sm">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("rcForm").addEventListener("submit", function () {
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
+});
+</script>
+{% endblock %}

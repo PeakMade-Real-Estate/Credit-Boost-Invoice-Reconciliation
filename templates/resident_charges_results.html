@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Resident Charges Results – {{ run_id }}{% endblock %}
+
+{% block content %}
+{% set discrepancies = result.get('discrepancies', []) %}
+{% set summaries = result.get('property_summaries', []) %}
+{% set cnb_list = discrepancies | selectattr('discrepancy_type', 'equalto', 'charged_not_billed') | list %}
+{% set bnc_list = discrepancies | selectattr('discrepancy_type', 'equalto', 'billed_not_charged') | list %}
+
+<!-- Page header -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h3 class="mb-0">Resident Charges Reconciliation</h3>
+        <div class="text-muted small">
+            <code>{{ run_id }}</code> &mdash;
+            {{ result.get('reporting_month') }} &mdash;
+            {{ result.get('vendor') }}
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('reconciliation.resident_charges_download', run_id=run_id) }}"
+           class="btn btn-success">
+            <i class="bi bi-file-earmark-excel me-1"></i>Download Excel
+        </a>
+        <a href="{{ url_for('reconciliation.resident_charges_upload') }}"
+           class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>New Check
+        </a>
+    </div>
+</div>
+
+<!-- Status banner -->
+{% set total_disc = cnb_list | length + bnc_list | length %}
+<div class="alert {{ 'alert-success' if total_disc == 0 else 'alert-warning' }} d-flex align-items-center mb-4">
+    <i class="bi {{ 'bi-check-circle-fill' if total_disc == 0 else 'bi-exclamation-triangle-fill' }} fs-4 me-3"></i>
+    <div>
+        {% if total_disc == 0 %}
+            <strong>All Clear</strong> – No discrepancies found between resident charges and Boom invoice.
+        {% else %}
+            <strong>{{ total_disc }} discrepanc{{ 'y' if total_disc == 1 else 'ies' }} found</strong>
+            across {{ summaries | length }} propert{{ 'y' if summaries | length == 1 else 'ies' }}.
+        {% endif %}
+    </div>
+</div>
+
+<!-- Key metrics -->
+<div class="row g-3 mb-4">
+    {% set metrics = [
+        ('Residents Charged', result.get('total_residents_charged', 0), 'bi-person-plus', 'primary'),
+        ('Residents Billed', result.get('total_residents_billed', 0), 'bi-receipt', 'info'),
+        ('Matched', result.get('total_matched', 0), 'bi-check2-circle', 'success'),
+        ('Charged, Not Billed', result.get('total_charged_not_billed', 0), 'bi-person-exclamation', 'warning'),
+        ('Billed, Not Charged', result.get('total_billed_not_charged', 0), 'bi-exclamation-circle', 'danger'),
+        ('Properties', summaries | length, 'bi-buildings', 'secondary'),
+    ] %}
+    {% for label, value, icon, colour in metrics %}
+    <div class="col-sm-6 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-{{ colour }} bg-opacity-10 p-3">
+                    <i class="bi {{ icon }} text-{{ colour }} fs-4"></i>
+                </div>
+                <div>
+                    <div class="text-muted small">{{ label }}</div>
+                    <div class="fw-bold fs-5">{{ value }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Unmatched properties warning -->
+{% if result.get('unmatched_charge_properties') or result.get('unmatched_invoice_properties') %}
+<div class="card shadow-sm mb-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-25 fw-semibold">
+        <i class="bi bi-exclamation-triangle me-2 text-warning"></i>Unmatched Properties
+    </div>
+    <div class="card-body">
+        {% if result.get('unmatched_charge_properties') %}
+        <p class="mb-1"><strong>In Resident Charges but not in Boom invoice:</strong></p>
+        <ul class="mb-3">
+            {% for prop in result.get('unmatched_charge_properties') %}
+            <li>{{ prop }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if result.get('unmatched_invoice_properties') %}
+        <p class="mb-1"><strong>In Boom invoice but not in Resident Charges:</strong></p>
+        <ul class="mb-0">
+            {% for prop in result.get('unmatched_invoice_properties') %}
+            <li>{{ prop }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Property summary table -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-buildings me-2 text-primary"></i>Property Summary
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="summaryTable">
+            <thead class="table-light">
+                <tr>
+                    <th>Property</th>
+                    <th class="text-center">Charged</th>
+                    <th class="text-center">Billed</th>
+                    <th class="text-center">Matched</th>
+                    <th class="text-center">Charged, Not Billed</th>
+                    <th class="text-center">Billed, Not Charged</th>
+                    <th class="text-end">Total Charged</th>
+                    <th class="text-end">Total Billed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in summaries %}
+                {% set has_disc = s.charged_not_billed_count > 0 or s.billed_not_charged_count > 0 %}
+                <tr class="{{ 'table-warning' if has_disc else '' }}">
+                    <td>
+                        {{ s.property_name }}
+                        {% if has_disc %}
+                        <i class="bi bi-exclamation-triangle-fill text-warning ms-1" title="Has discrepancies"></i>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ s.residents_charged }}</td>
+                    <td class="text-center">{{ s.residents_billed }}</td>
+                    <td class="text-center">
+                        <span class="badge bg-success">{{ s.matched_count }}</span>
+                    </td>
+                    <td class="text-center">
+                        {% if s.charged_not_billed_count > 0 %}
+                        <span class="badge bg-warning text-dark">{{ s.charged_not_billed_count }}</span>
+                        {% else %}
+                        <span class="text-muted">0</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if s.billed_not_charged_count > 0 %}
+                        <span class="badge bg-danger">{{ s.billed_not_charged_count }}</span>
+                        {% else %}
+                        <span class="text-muted">0</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">${{ "%.2f" | format(s.total_charged_amount | float) }}</td>
+                    <td class="text-end">${{ "%.2f" | format(s.total_billed_amount | float) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-3">No property data available.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Discrepancies -->
+{% if discrepancies %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+        <span>
+            <i class="bi bi-list-ul me-2 text-danger"></i>Discrepancies
+            <span class="badge bg-secondary ms-1">{{ discrepancies | length }}</span>
+        </span>
+        <!-- Filter controls -->
+        <div class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small text-muted">Filter:</label>
+            <select class="form-select form-select-sm" id="typeFilter" style="width:auto;">
+                <option value="">All Types</option>
+                <option value="Charged, Not Billed">Charged, Not Billed</option>
+                <option value="Billed, Not Charged">Billed, Not Charged</option>
+            </select>
+            <select class="form-select form-select-sm" id="propFilter" style="width:auto;">
+                <option value="">All Properties</option>
+                {% for s in summaries %}
+                <option value="{{ s.property_name }}">{{ s.property_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="discTable">
+            <thead class="table-light">
+                <tr>
+                    <th>Type</th>
+                    <th>Property</th>
+                    <th>Unit</th>
+                    <th>Resident</th>
+                    <th>Lease Status</th>
+                    <th class="text-end">Charged ($)</th>
+                    <th class="text-end">Billed ($)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in discrepancies %}
+                {% set type_label = 'Charged, Not Billed' if d.discrepancy_type == 'charged_not_billed' else 'Billed, Not Charged' %}
+                <tr class="{{ 'table-warning' if d.discrepancy_type == 'charged_not_billed' else 'table-danger' }}"
+                    data-type="{{ type_label }}"
+                    data-property="{{ d.property_name }}">
+                    <td>
+                        <span class="badge {{ 'bg-warning text-dark' if d.discrepancy_type == 'charged_not_billed' else 'bg-danger' }}">
+                            {{ type_label }}
+                        </span>
+                    </td>
+                    <td>{{ d.property_name }}</td>
+                    <td>{{ d.unit }}</td>
+                    <td>{{ d.resident_name }}</td>
+                    <td>
+                        {% if d.lease_status %}
+                        <span class="badge
+                            {{ 'bg-success' if d.lease_status == 'Current'
+                               else 'bg-warning text-dark' if d.lease_status == 'Notice'
+                               else 'bg-secondary' if d.lease_status == 'Past'
+                               else 'bg-info text-dark' }}">
+                            {{ d.lease_status }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if d.charged_amount | float > 0 %}
+                        ${{ "%.2f" | format(d.charged_amount | float) }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if d.billed_amount | float > 0 %}
+                        ${{ "%.2f" | format(d.billed_amount | float) }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer text-muted small" id="filteredCount">
+        Showing {{ discrepancies | length }} of {{ discrepancies | length }} discrepancies.
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const typeFilter = document.getElementById('typeFilter');
+    const propFilter = document.getElementById('propFilter');
+    const tbody = document.querySelector('#discTable tbody');
+    const countEl = document.getElementById('filteredCount');
+    if (!tbody) return;
+
+    function applyFilters() {
+        const typeVal = typeFilter ? typeFilter.value : '';
+        const propVal = propFilter ? propFilter.value : '';
+        let shown = 0;
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(function (row) {
+            const matchType = !typeVal || row.dataset.type === typeVal;
+            const matchProp = !propVal || row.dataset.property === propVal;
+            row.style.display = (matchType && matchProp) ? '' : 'none';
+            if (matchType && matchProp) shown++;
+        });
+        if (countEl) {
+            countEl.textContent = 'Showing ' + shown + ' of ' + rows.length + ' discrepancies.';
+        }
+    }
+
+    if (typeFilter) typeFilter.addEventListener('change', applyFilters);
+    if (propFilter) propFilter.addEventListener('change', applyFilters);
+})();
+</script>
+{% endblock %}
