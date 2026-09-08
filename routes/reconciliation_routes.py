@@ -215,7 +215,7 @@ def process_upload():
             known_file_hashes=known_hashes,
             uploaded_by=session.get("user", "web_user"),
             run_id=run_id,
-            generate_outputs=False,  # Generate only when user requests download
+            generate_outputs=True,  # Always generate so the run can be archived to SharePoint
             output_folder=current_app.config["OUTPUT_FOLDER"],
         )
     except Exception as exc:
@@ -249,6 +249,23 @@ def process_upload():
     # Register file hashes for future duplicate detection
     if invoice_hash:
         register_file_hash(invoice_hash, run_id, "invoice")
+
+    # --- Archive to SharePoint (best-effort; never blocks the user flow) ---
+    try:
+        from services.sharepoint_service import archive_run
+
+        archive_run(
+            run_meta,
+            documents={
+                "Vendor Invoice": invoice_path,
+                "Cash Report": cash_path,
+                "Accounting Workbook": result.accounting_output_path,
+                "Audit Workbook": result.audit_output_path,
+                "Reconciliation CSV": result.reconciliation_csv_path,
+            },
+        )
+    except Exception as exc:
+        logger.error("SharePoint archiving failed for run %s: %s", run_id, exc)
 
     logger.info(
         "Upload processed: run_id=%s status=%s", run_id, result.status.value

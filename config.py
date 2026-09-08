@@ -71,6 +71,16 @@ class Config:
     )
 
     # ------------------------------------------------------------------
+    # SharePoint document library (reconciliation archive)
+    # ------------------------------------------------------------------
+    AZURE_CLIENT_ID: str = os.environ.get("AZURE_CLIENT_ID", "")
+    AZURE_TENANT_ID: str = os.environ.get("AZURE_TENANT_ID", "")
+    AZURE_CLIENT_SECRET: str = os.environ.get("AZURE_CLIENT_SECRET", "")
+    SHAREPOINT_HOSTNAME: str = os.environ.get("SHAREPOINT_HOSTNAME", "")
+    SHAREPOINT_SITE_PATH: str = os.environ.get("SHAREPOINT_SITE_PATH", "")
+    SHAREPOINT_LIBRARY_ID: str = os.environ.get("SHAREPOINT_LIBRARY_ID", "")
+
+    # ------------------------------------------------------------------
     # Reconciliation tolerances (stored as strings, converted at use)
     # ------------------------------------------------------------------
     INVOICE_TOLERANCE: Decimal = Decimal(
