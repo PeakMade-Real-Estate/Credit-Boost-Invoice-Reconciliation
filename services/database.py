@@ -51,6 +51,11 @@ def init_db(db_path: Optional[str] = None) -> None:
         except ImportError:
             _DB_PATH = "reconciliation.db"
 
+    # Ensure the parent directory exists (e.g. a persistent Azure path not yet created)
+    parent = Path(_DB_PATH).parent
+    if str(parent) not in ("", "."):
+        parent.mkdir(parents=True, exist_ok=True)
+
     with _connect() as conn:
         conn.executescript(_DDL)
         # Migrations: add columns that predate the current schema
