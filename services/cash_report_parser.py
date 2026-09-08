@@ -148,9 +148,49 @@ def _hash_file(file_path: str) -> str:
 
 
 def _read_file(path: Path) -> pd.DataFrame:
+    """Read a cash report file, auto-detecting the real header row.
+
+    Some Entrata exports include a title / date-range block above the
+    actual column headers (especially XLSX).  Read without assuming a
+    header row, then locate the row that best matches known column-name
+    candidates before splitting it out as the header.
+    """
     if path.suffix.lower() == ".csv":
-        return pd.read_csv(path, dtype=str, keep_default_na=False)
-    return pd.read_excel(path, dtype=str, keep_default_na=False)
+        raw = pd.read_csv(path, dtype=str, keep_default_na=False, header=None)
+    else:
+        raw = pd.read_excel(path, dtype=str, keep_default_na=False, header=None)
+
+    header_row = _find_header_row(raw)
+    df = raw.iloc[header_row + 1:].reset_index(drop=True)
+    df.columns = [str(v) for v in raw.iloc[header_row].tolist()]
+    return df
+
+
+_MAX_HEADER_SCAN_ROWS = 15
+
+
+def _find_header_row(raw: pd.DataFrame) -> int:
+    """Return the index of the row most likely to be the real header row.
+
+    Scans the first ``_MAX_HEADER_SCAN_ROWS`` rows and picks the one whose
+    cell values best match known Entrata column-name candidates.  Falls back
+    to row 0 (previous behaviour) if nothing matches.
+    """
+    candidates = {
+        c.lower().strip()
+        for values in ENTRATA_COLUMN_MAP.values()
+        for c in values
+    }
+    best_row = 0
+    best_score = 0
+    scan_limit = min(_MAX_HEADER_SCAN_ROWS, len(raw))
+    for i in range(scan_limit):
+        row_values = [str(v).lower().strip() for v in raw.iloc[i].tolist()]
+        score = sum(1 for v in row_values if v in candidates)
+        if score > best_score:
+            best_score = score
+            best_row = i
+    return best_row
 
 
 def _resolve_columns(
