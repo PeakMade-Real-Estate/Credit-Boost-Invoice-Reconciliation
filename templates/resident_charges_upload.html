@@ -4,6 +4,20 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-7">
+        <div class="d-flex gap-2 mb-4">
+            <a href="{{ url_for('reconciliation.upload') }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-file-earmark-text me-1"></i>Invoice vs Cash Report
+            </a>
+            <a href="{{ url_for('reconciliation.redpoint_invoice') }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Create Redpoint Invoice
+            </a>
+            <span class="btn btn-primary disabled pe-none">
+                <i class="bi bi-person-check me-1"></i>Resident Charges Check
+            </span>
+        </div>
+
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
                 <h4 class="mb-0">

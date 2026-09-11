@@ -109,7 +109,9 @@ def parse_boom_file(
     if ext == ".csv":
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
     else:
-        df = pd.read_excel(path, dtype=str, keep_default_na=False)
+        xlsx = pd.ExcelFile(path)
+        sheet_name = "Reconciliation Data" if "Reconciliation Data" in xlsx.sheet_names else 0
+        df = pd.read_excel(xlsx, sheet_name=sheet_name, dtype=str, keep_default_na=False)
 
     # Normalise column names to lowercase + underscores
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]

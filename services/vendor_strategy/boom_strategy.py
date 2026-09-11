@@ -278,7 +278,12 @@ class BoomReconciliationStrategy(VendorReconciliationStrategy):
             p.internal_property_id: p for p in property_master
         }
 
-        flat_rate = Decimal(str(self._config.get("flat_rate_per_resident", "6.50")))
+        try:
+            from config import Config
+
+            flat_rate = Config.CREDIT_BOOST_BASE_PRICE
+        except Exception:
+            flat_rate = Decimal(str(self._config.get("flat_rate_per_resident", "6.50")))
 
         groups: Dict[str, List[BoomTransactionLine]] = {}
         for line in matched_lines:

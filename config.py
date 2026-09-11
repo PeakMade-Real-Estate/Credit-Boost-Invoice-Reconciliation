@@ -81,6 +81,13 @@ class Config:
     SHAREPOINT_LIBRARY_ID: str = os.environ.get("SHAREPOINT_LIBRARY_ID", "")
 
     # ------------------------------------------------------------------
+    # Credit Boost pricing
+    # ------------------------------------------------------------------
+    CREDIT_BOOST_BASE_PRICE: Decimal = Decimal(
+        os.environ.get("CREDIT_BOOST_BASE_PRICE", "6.50")
+    )
+
+    # ------------------------------------------------------------------
     # Reconciliation tolerances (stored as strings, converted at use)
     # ------------------------------------------------------------------
     INVOICE_TOLERANCE: Decimal = Decimal(

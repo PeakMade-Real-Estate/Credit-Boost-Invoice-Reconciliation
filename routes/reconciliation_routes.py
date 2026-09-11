@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -55,6 +55,7 @@ from services.database import (
     update_run_outputs,
 )
 from services.output_generator import generate_outputs, generate_reconciliation_workbook
+from services.redpoint_invoice_generator import generate_redpoint_invoice
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("reconciliation", __name__)
@@ -125,6 +126,48 @@ def upload():
     vendors = current_app.config.get("SUPPORTED_VENDORS", ["Rent Plus"])
     recent_runs = list_runs(limit=10)
     return render_template("upload.html", vendors=vendors, recent_runs=recent_runs)
+
+
+@bp.route("/redpoint-invoice", methods=["GET"])
+def redpoint_invoice():
+    """Render the Boom statement to Redpoint invoice conversion form."""
+    return render_template("redpoint_invoice.html")
+
+
+@bp.route("/redpoint-invoice", methods=["POST"])
+def process_redpoint_invoice():
+    """Create a branded Redpoint invoice workbook from a Boom statement."""
+    statement_file = request.files.get("statement_file")
+    if not statement_file or statement_file.filename == "":
+        flash("Boom statement file is required.", "danger")
+        return redirect(url_for("reconciliation.redpoint_invoice"))
+
+    ext = Path(statement_file.filename).suffix.lower()
+    if ext not in {".csv", ".xlsx"}:
+        flash("Boom statement must be CSV or XLSX.", "danger")
+        return redirect(url_for("reconciliation.redpoint_invoice"))
+
+    statement_path, _statement_name = _save_upload(statement_file, "invoices")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    run_id = f"REDPOINT-INVOICE-{timestamp}"
+
+    try:
+        redpoint_invoice_path = generate_redpoint_invoice(
+            statement_path,
+            current_app.config["OUTPUT_FOLDER"],
+            run_id,
+            base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+        )
+    except Exception as exc:
+        logger.error("Redpoint invoice generation failed: %s", exc, exc_info=True)
+        flash(f"Redpoint invoice generation failed: {exc}", "danger")
+        return redirect(url_for("reconciliation.redpoint_invoice"))
+
+    return send_file(
+        redpoint_invoice_path,
+        as_attachment=True,
+        download_name=Path(redpoint_invoice_path).name,
+    )
 
 
 @bp.route("/runs/<run_id>/delete", methods=["POST"])
@@ -199,7 +242,16 @@ def process_upload():
     known_hashes = get_known_hashes()
 
     # --- Run reconciliation ---
+    redpoint_invoice_path = ""
     try:
+        if vendor == "Credit Boost powered by Boom":
+            redpoint_invoice_path = generate_redpoint_invoice(
+                invoice_path,
+                current_app.config["OUTPUT_FOLDER"],
+                run_id,
+                base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+            )
+
         result = run_reconciliation(
             invoice_file_path=invoice_path,
             cash_report_file_path=cash_path,
@@ -254,15 +306,21 @@ def process_upload():
     try:
         from services.sharepoint_service import archive_run
 
+        archive_documents = {
+            "Cash Report": cash_path,
+            "Accounting Workbook": result.accounting_output_path,
+            "Audit Workbook": result.audit_output_path,
+            "Reconciliation CSV": result.reconciliation_csv_path,
+        }
+        if redpoint_invoice_path:
+            archive_documents["Boom Statement"] = invoice_path
+            archive_documents["Redpoint Invoice"] = redpoint_invoice_path
+        else:
+            archive_documents["Vendor Invoice"] = invoice_path
+
         archive_run(
             run_meta,
-            documents={
-                "Vendor Invoice": invoice_path,
-                "Cash Report": cash_path,
-                "Accounting Workbook": result.accounting_output_path,
-                "Audit Workbook": result.audit_output_path,
-                "Reconciliation CSV": result.reconciliation_csv_path,
-            },
+            documents=archive_documents,
         )
     except Exception as exc:
         logger.error("SharePoint archiving failed for run %s: %s", run_id, exc)

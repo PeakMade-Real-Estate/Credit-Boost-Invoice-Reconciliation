@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Create Redpoint Invoice{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+
+        <div class="d-flex gap-2 mb-4">
+            <a href="{{ url_for('reconciliation.upload') }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-file-earmark-text me-1"></i>Invoice vs Cash Report
+            </a>
+            <span class="btn btn-primary disabled pe-none">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Create Redpoint Invoice
+            </span>
+            <a href="{{ url_for('reconciliation.resident_charges_upload') }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-person-check me-1"></i>Resident Charges Check
+            </a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Create Redpoint Invoice
+                </h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('reconciliation.process_redpoint_invoice') }}"
+                      enctype="multipart/form-data" id="redpointForm" novalidate>
+
+                    <div class="mb-3">
+                        <label for="statement_file" class="form-label fw-semibold">
+                            Boom Statement <span class="text-danger">*</span>
+                        </label>
+                        <input class="form-control" type="file" id="statement_file"
+                               name="statement_file" accept=".csv,.xlsx" required>
+                        <div class="form-text">
+                            Upload the Boom statement export. The generated Redpoint invoice will download as an XLSX workbook.
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('reconciliation.upload') }}"
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>Invoice Reconciliation
+                        </a>
+                        <div class="d-flex gap-2">
+                            <button type="reset" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-1"></i>Reset
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">
+                                <i class="bi bi-download me-1"></i>Create Invoice
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("redpointForm").addEventListener("submit", function () {
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+});
+</script>
+{% endblock %}

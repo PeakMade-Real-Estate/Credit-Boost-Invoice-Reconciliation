@@ -235,9 +235,16 @@ def archive_run(run_meta, documents: Dict[str, Optional[str]]) -> dict:
             logger.warning("Skipping SharePoint upload; file not found: %s", path)
             continue
         item_id = _upload_file(token, drive_id, folder_id, str(p), p.name)
-        _set_item_fields(
-            token, drive_id, item_id, {"RunID": run_meta.run_id, "DocumentType": doc_type}
-        )
+        try:
+            _set_item_fields(
+                token, drive_id, item_id, {"RunID": run_meta.run_id, "DocumentType": doc_type}
+            )
+        except SharePointConnectionError as exc:
+            logger.warning(
+                "Uploaded %s but could not set DocumentType=%r: %s",
+                p.name, doc_type, exc,
+            )
+            _set_item_fields(token, drive_id, item_id, {"RunID": run_meta.run_id})
         uploaded[doc_type] = item_id
 
     logger.info(
