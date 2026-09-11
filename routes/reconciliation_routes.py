@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import uuid
+import zipfile
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -55,7 +56,7 @@ from services.database import (
     update_run_outputs,
 )
 from services.output_generator import generate_outputs, generate_reconciliation_workbook
-from services.redpoint_invoice_generator import generate_redpoint_invoice
+from services.redpoint_invoice_generator import generate_redpoint_invoice, generate_redpoint_invoice_package
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("reconciliation", __name__)
@@ -136,7 +137,7 @@ def redpoint_invoice():
 
 @bp.route("/redpoint-invoice", methods=["POST"])
 def process_redpoint_invoice():
-    """Create a branded Redpoint invoice workbook from a Boom statement."""
+    """Create branded Redpoint invoice workbook/PDF files from a Boom statement."""
     statement_file = request.files.get("statement_file")
     if not statement_file or statement_file.filename == "":
         flash("Boom statement file is required.", "danger")
@@ -152,7 +153,7 @@ def process_redpoint_invoice():
     run_id = f"REDPOINT-INVOICE-{timestamp}"
 
     try:
-        redpoint_invoice_path = generate_redpoint_invoice(
+        redpoint_invoice_path, redpoint_pdf_path = generate_redpoint_invoice_package(
             statement_path,
             current_app.config["OUTPUT_FOLDER"],
             run_id,
@@ -163,10 +164,16 @@ def process_redpoint_invoice():
         flash(f"Redpoint invoice generation failed: {exc}", "danger")
         return redirect(url_for("reconciliation.redpoint_invoice"))
 
+    zip_path = str(Path(current_app.config["OUTPUT_FOLDER"]) / f"{run_id}_redpoint_invoice_package.zip")
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(redpoint_invoice_path, arcname=Path(redpoint_invoice_path).name)
+        zf.write(redpoint_pdf_path, arcname=Path(redpoint_pdf_path).name)
+
     return send_file(
-        redpoint_invoice_path,
+        zip_path,
         as_attachment=True,
-        download_name=Path(redpoint_invoice_path).name,
+        download_name=Path(zip_path).name,
+        mimetype="application/zip",
     )
 
 
@@ -243,9 +250,10 @@ def process_upload():
 
     # --- Run reconciliation ---
     redpoint_invoice_path = ""
+    redpoint_pdf_path = ""
     try:
         if vendor == "Credit Boost powered by Boom":
-            redpoint_invoice_path = generate_redpoint_invoice(
+            redpoint_invoice_path, redpoint_pdf_path = generate_redpoint_invoice_package(
                 invoice_path,
                 current_app.config["OUTPUT_FOLDER"],
                 run_id,
@@ -315,6 +323,7 @@ def process_upload():
         if redpoint_invoice_path:
             archive_documents["Boom Statement"] = invoice_path
             archive_documents["Redpoint Invoice"] = redpoint_invoice_path
+            archive_documents["Redpoint Invoice PDF"] = redpoint_pdf_path
         else:
             archive_documents["Vendor Invoice"] = invoice_path
 
