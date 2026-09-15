@@ -27,6 +27,8 @@ _SUMMARY_SHEET = "Property Summary"
 _RECONCILIATION_SHEET = "Reconciliation Data"
 
 _AMOUNT_COLUMN_CANDIDATES = {"amount", "transactionamount", "normalizedamount"}
+_DEFAULT_BILL_TO_NAME = "Everest Campus Services"
+_DEFAULT_BILL_TO_ADDRESS = "2970 Clairmont Rd, #310, Atlanta, GA 30329"
 _DROP_COLUMN_KEYS = {
     "id",
     "item",
@@ -262,8 +264,16 @@ def _write_invoice_pdf(output_path: Path, summary_df: pd.DataFrame, run_id: str)
         Spacer(1, 0.2 * inch),
         Paragraph("Invoice", styles["Title"]),
         Paragraph(f"Run ID: {run_id}", styles["Normal"]),
-        Spacer(1, 0.25 * inch),
+        Spacer(1, 0.2 * inch),
     ]
+
+    bill_to_name, bill_to_address = _resolve_bill_to()
+    elements.extend([
+        Paragraph("Bill To:", styles["Heading3"]),
+        Paragraph(bill_to_name, styles["Normal"]),
+        Paragraph(bill_to_address, styles["Normal"]),
+        Spacer(1, 0.25 * inch),
+    ])
 
     table_rows = [summary_df.columns.tolist()]
     for row in summary_df.itertuples(index=False):
@@ -337,6 +347,17 @@ def _find_column_index(df: pd.DataFrame, column_name: str) -> Optional[int]:
         if str(col).strip().lower() == column_name.lower():
             return idx
     return None
+
+
+def _resolve_bill_to() -> Tuple[str, str]:
+    try:
+        from config import Config
+
+        name = Config.BILL_TO_COMPANY_NAME or _DEFAULT_BILL_TO_NAME
+        address = Config.BILL_TO_ADDRESS or _DEFAULT_BILL_TO_ADDRESS
+        return name, address
+    except Exception:
+        return _DEFAULT_BILL_TO_NAME, _DEFAULT_BILL_TO_ADDRESS
 
 
 def _resolve_base_price(base_price: Optional[Decimal]) -> Decimal:

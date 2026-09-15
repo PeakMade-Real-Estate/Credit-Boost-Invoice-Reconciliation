@@ -112,6 +112,26 @@ def test_generate_redpoint_invoice_package_adds_summary_and_pdf(tmp_path):
     assert ws["C13"].value == 19.5
 
 
+def test_generate_redpoint_invoice_pdf_includes_bill_to(tmp_path):
+    import pdfplumber
+
+    source = tmp_path / "boom_statement.csv"
+    pd.DataFrame(
+        [{"ID": "1", "Name": "A", "Property Name": "Beach Club", "Amount": "-$0.91"}]
+    ).to_csv(source, index=False)
+
+    _xlsx_path, pdf_path = generate_redpoint_invoice_package(
+        str(source), str(tmp_path), "REC-TEST", base_price=Decimal("6.50")
+    )
+
+    with pdfplumber.open(pdf_path) as pdf:
+        text = pdf.pages[0].extract_text()
+
+    assert "Bill To:" in text
+    assert "Everest Campus Services" in text
+    assert "2970 Clairmont Rd" in text
+
+
 def test_redpoint_invoice_route_returns_workbook(tmp_path):
     class TestConfig(Config):
         TESTING = True

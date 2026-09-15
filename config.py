@@ -88,6 +88,16 @@ class Config:
     )
 
     # ------------------------------------------------------------------
+    # Redpoint invoice "Bill To" details
+    # ------------------------------------------------------------------
+    BILL_TO_COMPANY_NAME: str = os.environ.get(
+        "BILL_TO_COMPANY_NAME", "Everest Campus Services"
+    )
+    BILL_TO_ADDRESS: str = os.environ.get(
+        "BILL_TO_ADDRESS", "2970 Clairmont Rd, #310, Atlanta, GA 30329"
+    )
+
+    # ------------------------------------------------------------------
     # Reconciliation tolerances (stored as strings, converted at use)
     # ------------------------------------------------------------------
     INVOICE_TOLERANCE: Decimal = Decimal(
