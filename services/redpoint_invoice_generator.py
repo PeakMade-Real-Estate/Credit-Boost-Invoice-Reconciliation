@@ -46,6 +46,8 @@ _DROP_COLUMN_KEYS = {
     "email",
     "address",
     "applicantsubmitteddate",
+    "propertygroupname",
+    "unitid",
 }
 
 

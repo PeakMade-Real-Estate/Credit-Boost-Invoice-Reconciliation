@@ -69,8 +69,6 @@ def test_generate_redpoint_invoice_reprices_and_removes_boom_columns(tmp_path):
         "Name",
         "Property Name",
         "Property Address",
-        "Property Group Name",
-        "Unit ID",
         "Unit",
         "Amount",
         "Created At",
