@@ -110,7 +110,14 @@ def _generate_redpoint_invoice_artifacts(
     if ext == ".csv":
         df = pd.read_csv(source_path, dtype=str, keep_default_na=False)
     elif ext == ".xlsx":
-        df = pd.read_excel(source_path, dtype=str, keep_default_na=False)
+        # A previously-generated Redpoint invoice carries its raw transaction
+        # data in a hidden "Reconciliation Data" sheet; use it if present so
+        # re-uploading a generated invoice re-derives correctly instead of
+        # reading the visible Property Summary/Redpoint Invoice sheets as
+        # if they were a raw Boom statement.
+        xlsx = pd.ExcelFile(source_path)
+        sheet_name = _RECONCILIATION_SHEET if _RECONCILIATION_SHEET in xlsx.sheet_names else 0
+        df = pd.read_excel(xlsx, sheet_name=sheet_name, dtype=str, keep_default_na=False)
     else:
         raise ValueError(f"Unsupported Boom statement file type: {ext!r}")
 

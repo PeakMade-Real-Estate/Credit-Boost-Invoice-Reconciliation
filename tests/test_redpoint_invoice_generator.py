@@ -130,6 +130,39 @@ def test_generate_redpoint_invoice_pdf_includes_bill_to(tmp_path):
     assert "2970 Clairmont Rd" in text
 
 
+def test_generate_redpoint_invoice_is_idempotent_when_reprocessed(tmp_path):
+    """Feeding a previously-generated Redpoint invoice back in must not crash.
+
+    Regression test: process_upload() auto-generates a Redpoint invoice from
+    whatever is uploaded as the vendor invoice for Credit Boost runs. If a
+    user re-uploads an already-generated Redpoint invoice (e.g. to reconcile
+    it against a cash report), the generator must read the hidden
+    "Reconciliation Data" sheet rather than treating the visible
+    Property Summary/Redpoint Invoice sheets as raw Boom data.
+    """
+    source = tmp_path / "boom_statement.csv"
+    pd.DataFrame(
+        [
+            {"ID": "1", "Name": "A", "Property Name": "Beach Club", "Amount": "-$0.91"},
+            {"ID": "2", "Name": "B", "Property Name": "Campus Creek", "Amount": "-$0.91"},
+        ]
+    ).to_csv(source, index=False)
+
+    first_xlsx, _first_pdf = generate_redpoint_invoice_package(
+        str(source), str(tmp_path), "REC-TEST-1", base_price=Decimal("6.50")
+    )
+
+    # Re-run the generator against its own previous output.
+    second_xlsx, _second_pdf = generate_redpoint_invoice_package(
+        first_xlsx, str(tmp_path), "REC-TEST-2", base_price=Decimal("6.50")
+    )
+
+    lines, summary = parse_boom_file(second_xlsx, reporting_month="2026-07")
+    assert summary.line_count == 2
+    assert {l.boom_property_id for l in lines} == {"Beach Club", "Campus Creek"}
+    assert all(l.transaction_amount == Decimal("6.50") for l in lines)
+
+
 def test_redpoint_invoice_route_returns_workbook(tmp_path):
     class TestConfig(Config):
         TESTING = True
