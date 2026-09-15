@@ -41,6 +41,9 @@ _DROP_COLUMN_KEYS = {
     "bankaccountname",
     "bankaccountlast4",
     "statementid",
+    "email",
+    "address",
+    "applicantsubmitteddate",
 }
 
 
@@ -50,6 +53,7 @@ def generate_redpoint_invoice(
     run_id: str,
     *,
     base_price: Optional[Decimal] = None,
+    reporting_month: Optional[str] = None,
 ) -> str:
     """Create a branded Redpoint invoice workbook from a Boom statement export."""
     xlsx_path, _pdf_path = _generate_redpoint_invoice_artifacts(
@@ -57,6 +61,7 @@ def generate_redpoint_invoice(
         output_folder,
         run_id,
         base_price=base_price,
+        reporting_month=reporting_month,
         include_pdf=False,
     )
     return xlsx_path
@@ -68,6 +73,7 @@ def generate_redpoint_invoice_package(
     run_id: str,
     *,
     base_price: Optional[Decimal] = None,
+    reporting_month: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Create the branded XLSX invoice and matching PDF invoice."""
     xlsx_path, pdf_path = _generate_redpoint_invoice_artifacts(
@@ -75,6 +81,7 @@ def generate_redpoint_invoice_package(
         output_folder,
         run_id,
         base_price=base_price,
+        reporting_month=reporting_month,
         include_pdf=True,
     )
     if not pdf_path:
@@ -88,6 +95,7 @@ def _generate_redpoint_invoice_artifacts(
     run_id: str,
     *,
     base_price: Optional[Decimal],
+    reporting_month: Optional[str],
     include_pdf: bool,
 ) -> Tuple[str, Optional[str]]:
     source_path = Path(boom_statement_path)
@@ -113,7 +121,7 @@ def _generate_redpoint_invoice_artifacts(
     os.makedirs(output_folder, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_path = Path(output_folder) / f"{run_id}_redpoint_invoice_{timestamp}.xlsx"
-    _write_invoice_workbook(output_path, invoice_df, summary_df, df, run_id)
+    _write_invoice_workbook(output_path, invoice_df, summary_df, df, run_id, reporting_month)
 
     pdf_path = None
     if include_pdf:
@@ -136,13 +144,14 @@ def _write_invoice_workbook(
     summary_df: pd.DataFrame,
     reconciliation_df: pd.DataFrame,
     run_id: str,
+    reporting_month: Optional[str],
 ) -> None:
     wb = Workbook()
-    ws = wb.active
-    ws.title = _VISIBLE_SHEET
+    summary_ws = wb.active
+    summary_ws.title = _SUMMARY_SHEET
+    _write_summary_sheet(summary_ws, summary_df, run_id, reporting_month)
 
-    _add_logo(ws, _REDPOINT_LOGO_PATH, "A1", width=260)
-    _add_logo(ws, _CREDIT_BOOST_LOGO_PATH, "D1", width=210)
+    ws = wb.create_sheet(_VISIBLE_SHEET)
 
     ws["A5"] = "Invoice"
     ws["A5"].font = Font(bold=True, size=18, color="1F3864")
@@ -174,9 +183,6 @@ def _write_invoice_workbook(
 
     ws.freeze_panes = f"A{header_row + 1}"
 
-    summary_ws = wb.create_sheet(_SUMMARY_SHEET)
-    _write_summary_sheet(summary_ws, summary_df)
-
     hidden_ws = wb.create_sheet(_RECONCILIATION_SHEET)
     for col_idx, column_name in enumerate(reconciliation_df.columns, start=1):
         hidden_ws.cell(row=1, column=col_idx, value=column_name)
@@ -188,11 +194,20 @@ def _write_invoice_workbook(
     wb.save(output_path)
 
 
-def _write_summary_sheet(ws, summary_df: pd.DataFrame) -> None:
-    ws["A1"] = "Property Summary"
-    ws["A1"].font = Font(bold=True, size=16, color="1F3864")
+def _write_summary_sheet(
+    ws, summary_df: pd.DataFrame, run_id: str, reporting_month: Optional[str]
+) -> None:
+    _add_logo(ws, _REDPOINT_LOGO_PATH, "A1", width=220)
+    _add_logo(ws, _CREDIT_BOOST_LOGO_PATH, "C1", width=180)
 
-    header_row = 3
+    ws["A6"] = "Property Summary"
+    ws["A6"].font = Font(bold=True, size=16, color="1F3864")
+    ws["A7"] = f"Reporting Month: {reporting_month or 'N/A'}"
+    ws["A7"].font = Font(bold=True, color="333333")
+    ws["A8"] = f"Run ID: {run_id}"
+    ws["A8"].font = Font(italic=True, color="666666")
+
+    header_row = 10
     for col_idx, column_name in enumerate(summary_df.columns, start=1):
         cell = ws.cell(row=header_row, column=col_idx, value=column_name)
         cell.font = Font(bold=True, color="FFFFFF")

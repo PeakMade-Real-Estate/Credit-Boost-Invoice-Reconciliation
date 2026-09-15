@@ -30,6 +30,15 @@
                       enctype="multipart/form-data" id="redpointForm" novalidate>
 
                     <div class="mb-3">
+                        <label for="reporting_month" class="form-label fw-semibold">
+                            Reporting Month <span class="text-danger">*</span>
+                        </label>
+                        <input type="month" class="form-control" id="reporting_month"
+                               name="reporting_month" required placeholder="YYYY-MM">
+                        <div class="form-text">Select the month this invoice covers.</div>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="statement_file" class="form-label fw-semibold">
                             Boom Statement <span class="text-danger">*</span>
                         </label>

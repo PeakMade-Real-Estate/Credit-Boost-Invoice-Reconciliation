@@ -49,24 +49,24 @@ def test_generate_redpoint_invoice_reprices_and_removes_boom_columns(tmp_path):
     ).to_csv(source, index=False)
 
     output_path = generate_redpoint_invoice(
-        str(source), str(tmp_path), "REC-TEST", base_price=Decimal("6.50")
+        str(source), str(tmp_path), "REC-TEST", base_price=Decimal("6.50"),
+        reporting_month="2026-07",
     )
 
     assert output_path.endswith(".xlsx")
 
     wb = load_workbook(output_path)
+    assert wb.sheetnames[0] == "Property Summary"
     assert "Redpoint Invoice" in wb.sheetnames
-    assert "Property Summary" in wb.sheetnames
     assert "Reconciliation Data" in wb.sheetnames
     assert wb["Reconciliation Data"].sheet_state == "hidden"
-    assert len(wb["Redpoint Invoice"]._images) == 2
+    assert len(wb["Property Summary"]._images) == 2
+    assert wb["Property Summary"]["A7"].value == "Reporting Month: 2026-07"
 
     df = pd.read_excel(output_path, sheet_name="Redpoint Invoice", header=7, dtype=str)
     assert df["Amount"].tolist() == ["6.50"]
     assert df.columns.tolist() == [
         "Name",
-        "Email",
-        "Address",
         "Property Name",
         "Property Address",
         "Property Group Name",
@@ -75,7 +75,6 @@ def test_generate_redpoint_invoice_reprices_and_removes_boom_columns(tmp_path):
         "Amount",
         "Created At",
         "Created At (Central)",
-        "Applicant Submitted Date",
     ]
 
     lines, summary = parse_boom_file(output_path, reporting_month="2026-07")
@@ -105,12 +104,12 @@ def test_generate_redpoint_invoice_package_adds_summary_and_pdf(tmp_path):
 
     wb = load_workbook(xlsx_path)
     ws = wb["Property Summary"]
-    assert ws["A4"].value == "Beach Club"
-    assert ws["B4"].value == 2
-    assert ws["C4"].value == 13.0
-    assert ws["A6"].value == "TOTAL"
-    assert ws["B6"].value == 3
-    assert ws["C6"].value == 19.5
+    assert ws["A11"].value == "Beach Club"
+    assert ws["B11"].value == 2
+    assert ws["C11"].value == 13.0
+    assert ws["A13"].value == "TOTAL"
+    assert ws["B13"].value == 3
+    assert ws["C13"].value == 19.5
 
 
 def test_redpoint_invoice_route_returns_workbook(tmp_path):
@@ -150,7 +149,10 @@ def test_redpoint_invoice_route_returns_workbook(tmp_path):
     with open(source, "rb") as fh:
         response = client.post(
             "/redpoint-invoice",
-            data={"statement_file": (fh, "boom_statement.csv")},
+            data={
+                "reporting_month": "2026-07",
+                "statement_file": (fh, "boom_statement.csv"),
+            },
             content_type="multipart/form-data",
         )
 

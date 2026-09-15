@@ -138,7 +138,11 @@ def redpoint_invoice():
 @bp.route("/redpoint-invoice", methods=["POST"])
 def process_redpoint_invoice():
     """Create branded Redpoint invoice workbook/PDF files from a Boom statement."""
+    reporting_month = request.form.get("reporting_month", "").strip()
     statement_file = request.files.get("statement_file")
+    if not reporting_month:
+        flash("Reporting month is required.", "danger")
+        return redirect(url_for("reconciliation.redpoint_invoice"))
     if not statement_file or statement_file.filename == "":
         flash("Boom statement file is required.", "danger")
         return redirect(url_for("reconciliation.redpoint_invoice"))
@@ -158,6 +162,7 @@ def process_redpoint_invoice():
             current_app.config["OUTPUT_FOLDER"],
             run_id,
             base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+            reporting_month=reporting_month,
         )
     except Exception as exc:
         logger.error("Redpoint invoice generation failed: %s", exc, exc_info=True)
@@ -258,6 +263,7 @@ def process_upload():
                 current_app.config["OUTPUT_FOLDER"],
                 run_id,
                 base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+                reporting_month=reporting_month,
             )
 
         result = run_reconciliation(
