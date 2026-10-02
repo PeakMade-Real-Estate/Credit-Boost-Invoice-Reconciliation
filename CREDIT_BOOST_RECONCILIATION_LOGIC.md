@@ -50,7 +50,8 @@ Submitting the form (`routes/reconciliation_routes.py::process_upload`) calls `r
    For each matched internal property, among **qualifying** lines only:
    - `QTY` = count of **distinct** qualifying transaction IDs.
    - `AMOUNT` = `QTY × flat_rate_per_resident` (currently **$6.50**, set in the YAML config).
-   - There is **no rate table** for Boom (unlike Rent Plus) — every resident costs the same flat fee, so no rate-mapping exceptions are ever produced for this vendor.
+   - **California properties use a reduced flat rate instead** (currently **$3.50**). The property's state is looked up (by normalized property name) from the shared SharePoint "Properties" list (`ADDRESS_STATE` column) via `services/property_state_service.py`. If that lookup is unavailable (SharePoint down/misconfigured), the standard rate is used for every property — this never blocks reconciliation.
+   - There is **no rate table** for Boom (unlike Rent Plus) — every resident costs the same flat fee (subject to the California override above), so no rate-mapping exceptions are ever produced for this vendor.
 
 7. **Parse the Entrata cash report** (`services/cash_report_parser.py`)
    Reads the Receipts by Charge Code export (CSV/XLSX), maps flexible column headings (property name/ID, charge code, cash received, adjustments) into `CashRecord` objects, one per property. The parser *supports* an optional `charge_code` filter, but the main upload route does not currently pass one — in practice, the file is trusted to already be scoped to the correct charge code because that's how the report was pulled from Entrata.
@@ -137,7 +138,7 @@ The property-level reconciliation (flow #1) can *pass* even if individual reside
 
 - **Qualifying line/transaction** — a Boom export row that matches all four configured filters (category, transaction type, template name, subject type). Only qualifying lines count toward billing.
 - **Roll-up mapping** — the approved, hand-curated CSV mapping Boom's property naming to our internal property IDs. Unlike Rent Plus, Boom does not use fuzzy name matching.
-- **Flat rate** — Boom charges a fixed $ amount per qualifying resident (currently $6.50); there is no per-property or per-unit-type rate table like Rent Plus has.
+- **Flat rate** — Boom charges a fixed $ amount per qualifying resident (currently $6.50, or $3.50 for California properties); there is no per-property or per-unit-type rate table like Rent Plus has.
 - **Exception severities** — `INFO` (no action needed), `WARNING` (review recommended, doesn't block), `BLOCKING` (must be resolved before the run can be trusted — forces `REQUIRES_REVIEW`).
 - **Charge code** — the Entrata AR code used to filter cash-received rows to only those relevant to Credit Boost (`CREDITBOOST`).
 

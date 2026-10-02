@@ -81,10 +81,25 @@ class Config:
     SHAREPOINT_LIBRARY_ID: str = os.environ.get("SHAREPOINT_LIBRARY_ID", "")
 
     # ------------------------------------------------------------------
+    # SharePoint "Properties" list (property name -> state, used for the
+    # California Credit Boost rate override)
+    # ------------------------------------------------------------------
+    SHAREPOINT_PROPERTIES_SITE_PATH: str = os.environ.get(
+        "SHAREPOINT_PROPERTIES_SITE_PATH", "/sites/BaseCampApps"
+    )
+    SHAREPOINT_PROPERTIES_LIST_ID: str = os.environ.get(
+        "SHAREPOINT_PROPERTIES_LIST_ID", "981ca5ef-aae0-43e9-af9e-4a54055ed87e"
+    )
+
+    # ------------------------------------------------------------------
     # Credit Boost pricing
     # ------------------------------------------------------------------
     CREDIT_BOOST_BASE_PRICE: Decimal = Decimal(
         os.environ.get("CREDIT_BOOST_BASE_PRICE", "6.50")
+    )
+    # California properties are billed at a reduced flat rate.
+    CREDIT_BOOST_BASE_PRICE_CA: Decimal = Decimal(
+        os.environ.get("CREDIT_BOOST_BASE_PRICE_CA", "3.50")
     )
 
     # ------------------------------------------------------------------

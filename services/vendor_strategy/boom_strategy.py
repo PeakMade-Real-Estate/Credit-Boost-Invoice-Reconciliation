@@ -35,6 +35,7 @@ from models.reconciliation_models import (
     ValidationResult,
 )
 from services.boom_invoice_parser import parse_boom_file
+from services.property_state_service import is_california
 from services.utils import normalize_text
 from services.vendor_strategy.base import VendorReconciliationStrategy
 
@@ -84,13 +85,25 @@ class BoomReconciliationStrategy(VendorReconciliationStrategy):
             _PROJECT_ROOT / self._config["property_rollups_path"]
         )
         rollups = _load_boom_rollups(rollups_path)
+
+        # Best-effort: used to apply the California rate override. A down or
+        # misconfigured SharePoint connection must never block reconciliation.
+        property_states: Dict[str, str] = {}
+        try:
+            from services.property_state_service import get_property_states
+
+            property_states = get_property_states()
+        except Exception as exc:
+            logger.warning("Could not load property states for CA rate lookup: %s", exc)
+
         # Index by normalised boom_property_id for O(1) lookup
         return {
             "rollups": {
                 normalize_text(r.boom_property_id): r
                 for r in rollups
                 if r.approved
-            }
+            },
+            "property_states": property_states,
         }
 
     # ------------------------------------------------------------------
@@ -282,8 +295,12 @@ class BoomReconciliationStrategy(VendorReconciliationStrategy):
             from config import Config
 
             flat_rate = Config.CREDIT_BOOST_BASE_PRICE
+            ca_rate = Config.CREDIT_BOOST_BASE_PRICE_CA
         except Exception:
             flat_rate = Decimal(str(self._config.get("flat_rate_per_resident", "6.50")))
+            ca_rate = Decimal(str(self._config.get("flat_rate_per_resident_ca", "3.50")))
+
+        property_states: Dict[str, str] = vendor_reference_data.get("property_states", {})
 
         groups: Dict[str, List[BoomTransactionLine]] = {}
         for line in matched_lines:
@@ -296,16 +313,22 @@ class BoomReconciliationStrategy(VendorReconciliationStrategy):
         for internal_id, lines in groups.items():
             pm = pm_by_internal.get(internal_id)
             first = lines[0]
+            property_name = pm.property_name if pm else first.boom_property_id
 
             unique_tx_ids = {l.transaction_id for l in lines}
             qty = Decimal(str(len(unique_tx_ids)))
-            amount = qty * flat_rate
+            rate = (
+                ca_rate
+                if is_california(property_name, property_states)
+                else flat_rate
+            )
+            amount = qty * rate
 
             pr = PropertyResult(
                 internal_property_id=internal_id,
                 pms_property_id=first.pms_property_id or (pm.pms_property_id if pm else ""),
                 vendor_property_id="",
-                property_name=pm.property_name if pm else first.boom_property_id,
+                property_name=property_name,
                 reporting_month=reporting_month,
                 charge_code=pm.charge_code if pm else "",
                 vendor=self.display_name,

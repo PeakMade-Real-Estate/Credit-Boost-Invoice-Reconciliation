@@ -327,6 +327,56 @@ class TestBoomUniqueTransactionCount:
 
 
 # ---------------------------------------------------------------------------
+# Test – California properties use the reduced flat rate
+# ---------------------------------------------------------------------------
+
+
+class TestBoomCaliforniaRate:
+    """Properties resolved as California (via property_states) use the
+    reduced CA flat rate instead of the standard flat rate."""
+
+    def test_california_property_uses_ca_rate(self):
+        from services.vendor_strategy.boom_strategy import BoomReconciliationStrategy
+
+        strategy = BoomReconciliationStrategy()
+        lines = [
+            _make_boom_line(transaction_id="TXN-001", boom_property_id="Summit Ridge",
+                            internal_id="CB-0010", pms_id="PMS-110"),
+            _make_boom_line(transaction_id="TXN-002", boom_property_id="Maple Grove",
+                            internal_id="CB-0011", pms_id="PMS-111", source_row=3),
+        ]
+        pm = _make_boom_property_master()
+        vendor_ref = _make_boom_vendor_ref()
+        vendor_ref["property_states"] = {"summit ridge": "CA"}
+
+        results, _ = strategy.aggregate_and_rate_map(
+            lines, pm, vendor_ref, _REPORTING_MONTH
+        )
+
+        by_id = {r.internal_property_id: r for r in results}
+        # 1 resident × $3.50 CA rate
+        assert by_id["CB-0010"].invoice_amount_owed == Decimal("3.50")
+        # 1 resident × $6.50 standard rate
+        assert by_id["CB-0011"].invoice_amount_owed == Decimal("6.50")
+
+    def test_missing_property_states_falls_back_to_standard_rate(self):
+        """No property_states key (e.g. SharePoint lookup failed) must not
+        raise and must use the standard flat rate for every property."""
+        from services.vendor_strategy.boom_strategy import BoomReconciliationStrategy
+
+        strategy = BoomReconciliationStrategy()
+        lines = [_make_boom_line(transaction_id="TXN-001")]
+        pm = _make_boom_property_master()
+        vendor_ref = _make_boom_vendor_ref()
+
+        results, _ = strategy.aggregate_and_rate_map(
+            lines, pm, vendor_ref, _REPORTING_MONTH
+        )
+
+        assert results[0].invoice_amount_owed == Decimal("6.50")
+
+
+# ---------------------------------------------------------------------------
 # Test 3 – Boom does not use RentPlus rate mappings
 # ---------------------------------------------------------------------------
 

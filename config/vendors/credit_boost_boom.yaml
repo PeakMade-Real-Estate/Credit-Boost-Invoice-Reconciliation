@@ -13,6 +13,9 @@ property_rollups_path: config/property_mappings/boom_property_rollups.csv
 balance_tolerance: "0.05"
 charge_code: CREDITBOOST
 flat_rate_per_resident: "6.50"
+# California properties are billed at this reduced flat rate instead
+# (looked up via the SharePoint Properties list ADDRESS_STATE field).
+flat_rate_per_resident_ca: "3.50"
 
 # Rows must satisfy ALL non-empty filters to be counted as qualifying
 # participants.  Leave a list empty to skip that dimension.
