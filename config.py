@@ -61,6 +61,10 @@ class Config:
         "PROPERTY_ROLLUPS_PATH",
         str(BASE_DIR / "config" / "property_mappings" / "boom_property_rollups.csv"),
     )
+    REVENUE_SHARE_GROUPS_PATH: str = os.environ.get(
+        "REVENUE_SHARE_GROUPS_PATH",
+        str(BASE_DIR / "config" / "property_mappings" / "revenue_share_groups.csv"),
+    )
 
     # ------------------------------------------------------------------
     # SQLite database

@@ -51,6 +51,64 @@ _CURRENCY_FMT = '#,##0.00'
 _INTEGER_FMT = '#,##0'
 _PCT_FMT = '0.00%'
 
+# ---------------------------------------------------------------------------
+# Revenue share groups (Everest Campus / Denali) — Accounting Summary only
+# ---------------------------------------------------------------------------
+_DEFAULT_REVENUE_SHARE_GROUP = "Everest Campus"
+
+# Separate from the Boom vendor's $6.50/$3.50 invoice flat rate — this is a
+# fixed internal benchmark accounting uses to sanity-check the peak share.
+# California properties get no revenue share per bed, so they contribute $0.
+_PEAK_SHARE_RATE_PER_BED = Decimal("3.00")
+
+_revenue_share_groups_cache: Optional[dict] = None
+
+
+def _get_property_states_safe() -> dict:
+    """Best-effort CA lookup; never blocks output generation if SharePoint is down."""
+    try:
+        from services.property_state_service import get_property_states
+
+        return get_property_states()
+    except Exception as exc:
+        logger.warning("Could not load property states for CA revenue share check: %s", exc)
+        return {}
+
+
+def _load_revenue_share_groups() -> dict:
+    """Load the property -> revenue share group map (cached).
+
+    Only properties that belong to a non-default group need an entry;
+    anything not listed falls back to ``_DEFAULT_REVENUE_SHARE_GROUP``.
+    """
+    global _revenue_share_groups_cache
+    if _revenue_share_groups_cache is not None:
+        return _revenue_share_groups_cache
+
+    import csv
+
+    from config import Config
+
+    groups: dict = {}
+    path = Path(Config.REVENUE_SHARE_GROUPS_PATH)
+    if path.exists():
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                name = (row.get("property_name") or "").strip()
+                group = (row.get("group") or "").strip()
+                if name and group:
+                    groups[normalize_text(name)] = group
+    else:
+        logger.warning("Revenue share groups file not found: %s", path)
+
+    _revenue_share_groups_cache = groups
+    return groups
+
+
+def _revenue_share_group_for(property_name: str) -> str:
+    groups = _load_revenue_share_groups()
+    return groups.get(normalize_text(property_name or ""), _DEFAULT_REVENUE_SHARE_GROUP)
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -244,6 +302,7 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
         "AMOUNT",
         "Cash Received",
         "PA Rev Share",
+        "Revenue Share Split",
         "Transition Date",
         "Notes",
         "Vendor",
@@ -262,8 +321,27 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
     _write_header_row(ws, headers, row=1)
     ws.freeze_panes = "A2"
 
+    from services.property_state_service import is_california
+
+    property_states = _get_property_states_safe()
+
+    revenue_share_group_totals: dict = {}
+    peak_share_qty_total = Decimal("0")
+
     for row_idx, pr in enumerate(result.property_results, start=2):
         fill = _status_fill(pr.validation_status)
+        is_ca = is_california(pr.property_name, property_states)
+        revenue_share_group = _revenue_share_group_for(pr.property_name)
+        # California properties get no revenue share per bed — excluded from
+        # both the peak-share benchmark and the Denali/Everest Campus totals.
+        if not is_ca:
+            revenue_share_group_totals[revenue_share_group] = (
+                revenue_share_group_totals.get(revenue_share_group, Decimal("0"))
+                + pr.actual_property_revenue_share
+            )
+            peak_share_qty_total += pr.net_policy_quantity
+        else:
+            revenue_share_group_totals.setdefault(revenue_share_group, Decimal("0"))
         row_data = [
             pr.reporting_month,
             pr.internal_property_id,
@@ -273,6 +351,7 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
             pr.invoice_amount_owed,               # AMOUNT
             pr.cash_received,
             pr.actual_property_revenue_share,     # PA Rev Share
+            revenue_share_group,                  # Revenue Share Split
             pr.transition_date,                   # Transition Date
             pr.notes,
             pr.vendor,
@@ -293,9 +372,9 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
                 cell.fill = PatternFill("solid", fgColor=fill)
 
     # Apply number formats  (col positions match the new header order)
-    currency_cols = [6, 7, 8, 16, 17, 18, 19]   # AMOUNT, Cash, PA Rev Share, pulls, shares
-    int_cols = [5, 14, 15]                        # QTY, Legacy Qty, Standard Qty
-    pct_cols = [20]                               # Collection Rate
+    currency_cols = [6, 7, 8, 17, 18, 19, 20]   # AMOUNT, Cash, PA Rev Share, pulls, shares
+    int_cols = [5, 15, 16]                        # QTY, Legacy Qty, Standard Qty
+    pct_cols = [21]                               # Collection Rate
     _apply_column_formats(ws, currency_cols, _CURRENCY_FMT, start_row=2)
     _apply_column_formats(ws, int_cols, _INTEGER_FMT, start_row=2)
     _apply_column_formats(ws, pct_cols, _PCT_FMT, start_row=2)
@@ -304,14 +383,22 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
     if result.portfolio_totals:
         totals = result.portfolio_totals
         summary_start = len(result.property_results) + 4
-        _write_portfolio_summary(ws, totals, summary_start)
+        amount_col_letter = get_column_letter(headers.index("AMOUNT") + 1)
+        peak_share_total = peak_share_qty_total * _PEAK_SHARE_RATE_PER_BED
+        next_row = _write_portfolio_summary(
+            ws, totals, summary_start, revenue_share_group_totals
+        )
+        _write_notes_footer(ws, totals, next_row, peak_share_total, amount_col_letter)
 
     _auto_column_widths(ws)
     wb.save(path)
     logger.info("Accounting summary written: %s", path)
 
 
-def _write_portfolio_summary(ws, totals, start_row: int) -> None:
+def _write_portfolio_summary(
+    ws, totals, start_row: int, revenue_share_group_totals: Optional[dict] = None
+) -> int:
+    """Write the PORTFOLIO SUMMARY block and return the next free row."""
     from openpyxl.styles import Font, PatternFill
 
     labels = [
@@ -324,6 +411,8 @@ def _write_portfolio_summary(ws, totals, start_row: int) -> None:
         ("Balance Difference", totals.balance_difference),
         ("Overall Status", totals.overall_status.value if totals.overall_status else ""),
     ]
+    for group_name, group_total in (revenue_share_group_totals or {}).items():
+        labels.append((f"{group_name} Revenue Share Total", group_total))
 
     title_cell = ws.cell(row=start_row, column=1, value="PORTFOLIO SUMMARY")
     title_cell.font = Font(bold=True, size=12)
@@ -337,6 +426,53 @@ def _write_portfolio_summary(ws, totals, start_row: int) -> None:
         )
         if isinstance(value, Decimal):
             value_cell.number_format = _CURRENCY_FMT
+
+    return start_row + len(labels) + 2
+
+
+def _write_notes_footer(
+    ws, totals, start_row: int, peak_share_total: Decimal, amount_col_letter: str
+) -> None:
+    """Write the accounting 'Notes' reconciliation block (see monthly workbook template)."""
+    from openpyxl.styles import Font
+
+    total_collected = totals.total_invoice_amount_owed + totals.total_actual_property_revenue_share
+
+    title_cell = ws.cell(row=start_row, column=1, value="Notes")
+    title_cell.font = Font(bold=True, size=12)
+
+    rows = [
+        ("total policies charged by Credit Boost =", totals.total_net_policy_quantity, _INTEGER_FMT, False),
+        (f"Peak revenue share from Credit Boost @ ${_PEAK_SHARE_RATE_PER_BED:.0f}/bed", peak_share_total, _CURRENCY_FMT, False),
+        (None, None, None, False),
+        ("Invoice from Credit Boost", totals.total_invoice_amount_owed, _CURRENCY_FMT, False),
+        ("Property rev share", totals.total_actual_property_revenue_share, _CURRENCY_FMT, False),
+        ("Total collected", total_collected, _CURRENCY_FMT, True),
+        ("s/b zero", totals.balance_difference, _CURRENCY_FMT, False),
+    ]
+
+    row_idx = start_row + 1
+    for label, value, number_format, bold in rows:
+        row_idx += 1
+        if label is None:
+            continue
+        label_cell = ws.cell(row=row_idx, column=1, value=label)
+        value_cell = ws.cell(row=row_idx, column=2, value=_safe_value(value))
+        value_cell.number_format = number_format
+        if bold:
+            label_cell.font = Font(bold=True, underline="single")
+            value_cell.font = Font(bold=True, underline="single")
+
+    footnote_row = row_idx + 2
+    footnote_cell = ws.cell(
+        row=footnote_row,
+        column=1,
+        value=(
+            f'Note: Corporate ACCT pulls the "amounts" in Column {amount_col_letter} '
+            "(AMOUNT) from each property to pay the Credit Boost invoice."
+        ),
+    )
+    footnote_cell.font = Font(italic=True, bold=True)
 
 
 # ---------------------------------------------------------------------------
