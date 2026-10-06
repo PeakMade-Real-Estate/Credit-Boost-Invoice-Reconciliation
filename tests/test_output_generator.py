@@ -11,7 +11,7 @@ from models.reconciliation_models import (
     ReconciliationResult,
     ReconciliationStatus,
 )
-from services.output_generator import _write_accounting_summary
+from services.output_generator import _write_accounting_summary, generate_reconciliation_workbook
 
 openpyxl = pytest.importorskip("openpyxl")
 
@@ -103,6 +103,46 @@ def test_revenue_share_split_column_and_group_totals(result, tmp_path):
 
     assert ws.cell(row=label_to_row["Invoice from Credit Boost"], column=2).value == pytest.approx(500.00)
     assert ws.cell(row=label_to_row["Property rev share"], column=2).value == pytest.approx(1149.00)
+    assert ws.cell(row=label_to_row["Total collected"], column=2).value == pytest.approx(1649.00)
+    assert ws.cell(row=label_to_row["s/b zero"], column=2).value == pytest.approx(0.0)
+
+
+def test_reconciliation_workbook_has_split_column_and_notes_footer(result, tmp_path):
+    """This is the 'final reconciliation' file provided to the team."""
+    xlsx_path = generate_reconciliation_workbook(result, str(tmp_path))
+
+    wb = openpyxl.load_workbook(xlsx_path)
+    ws = wb["Reconciliation"]
+
+    headers = [cell.value for cell in ws[1]]
+    assert headers == [
+        "PROPERTY", "QTY", "AMOUNT", "Cash Received",
+        "PA Rev Share", "Revenue Share Split", "Transition Date", "Notes",
+    ]
+    split_col = headers.index("Revenue Share Split") + 1
+
+    # 3 data rows + TOTAL row; existing property list is unaffected.
+    groups_by_property = {}
+    total_row_idx = None
+    for row in ws.iter_rows(min_row=2, max_row=5, values_only=False):
+        name = row[0].value
+        if name == "TOTAL":
+            total_row_idx = row[0].row
+            continue
+        groups_by_property[name] = row[split_col - 1].value
+    assert groups_by_property == {
+        "555 Boulevard": "Denali",
+        "Oak Tree Commons": "Everest Campus",
+        "CA Property": "Everest Campus",
+    }
+    assert total_row_idx is not None
+
+    label_to_row = {row[0].value: row[0].row for row in ws.iter_rows(min_col=1, max_col=1) if row[0].value}
+    assert ws.cell(row=label_to_row["Denali rev share"], column=2).value == pytest.approx(100.00)
+    assert ws.cell(row=label_to_row["Everest Campus rev share"], column=2).value == pytest.approx(50.00)
+    peak_share_row = label_to_row["Peak revenue share from Credit Boost @ $3/bed"]
+    assert ws.cell(row=peak_share_row, column=2).value == pytest.approx(0.0)
+    assert ws.cell(row=label_to_row["Invoice from Credit Boost"], column=2).value == pytest.approx(500.00)
     assert ws.cell(row=label_to_row["Total collected"], column=2).value == pytest.approx(1649.00)
     assert ws.cell(row=label_to_row["s/b zero"], column=2).value == pytest.approx(0.0)
 

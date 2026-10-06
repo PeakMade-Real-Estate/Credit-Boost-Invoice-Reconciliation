@@ -159,12 +159,14 @@ def generate_reconciliation_workbook(
     """Write the workbook-style reconciliation XLSX and return its path.
 
     Columns: PROPERTY, QTY, AMOUNT, Cash Received, PA Rev Share,
-             Transition Date, Notes — formatted as an Excel Table with
-             auto-fitted column widths.
+             Revenue Share Split, Transition Date, Notes — formatted as an
+             Excel Table with auto-fitted column widths.
 
     Properties present in the cash report but absent from the invoice are
     included with "not in invoice" in QTY, AMOUNT, and PA Rev Share.
-    A bolded TOTAL row is appended below the table.
+    A bolded TOTAL row is appended below the table, followed by a Notes
+    footer (total policies, peak revenue share @ $3/bed, invoice total,
+    property rev share, total collected, and a balance check).
     """
     if not _OPENPYXL_AVAILABLE:
         raise RuntimeError("openpyxl is not installed. Run: pip install openpyxl")
@@ -183,21 +185,40 @@ def generate_reconciliation_workbook(
         if r.property_name
     }
 
+    from services.property_state_service import is_california
+
+    property_states = _get_property_states_safe()
+
     _NOT_IN_INVOICE = "not in invoice"
     _HEADERS = [
         "PROPERTY", "QTY", "AMOUNT", "Cash Received",
-        "PA Rev Share", "Transition Date", "Notes",
+        "PA Rev Share", "Revenue Share Split", "Transition Date", "Notes",
     ]
 
     rows = []
+    revenue_share_group_totals: dict = {}
+    peak_share_qty_total = Decimal("0")
 
     for pr in result.property_results:
+        is_ca = is_california(pr.property_name, property_states)
+        group = _revenue_share_group_for(pr.property_name)
+        # California properties get no revenue share per bed — excluded from
+        # both the peak-share benchmark and the Denali/Everest Campus totals.
+        if not is_ca:
+            revenue_share_group_totals[group] = (
+                revenue_share_group_totals.get(group, Decimal("0"))
+                + pr.actual_property_revenue_share
+            )
+            peak_share_qty_total += pr.net_policy_quantity
+        else:
+            revenue_share_group_totals.setdefault(group, Decimal("0"))
         rows.append([
             pr.property_name,
             int(pr.net_policy_quantity),
             round(float(pr.invoice_amount_owed), 2),
             round(float(pr.cash_received), 2),
             round(float(pr.actual_property_revenue_share), 2),
+            group,
             "",
             "",
         ])
@@ -212,7 +233,10 @@ def generate_reconciliation_workbook(
             continue
         cash_rec = cash_by_norm_name.get(norm)
         cash_amount = round(float(cash_rec.cash_received), 2) if cash_rec else None
-        rows.append([prop_name, _NOT_IN_INVOICE, _NOT_IN_INVOICE, cash_amount, _NOT_IN_INVOICE, "", ""])
+        rows.append([
+            prop_name, _NOT_IN_INVOICE, _NOT_IN_INVOICE, cash_amount, _NOT_IN_INVOICE,
+            _revenue_share_group_for(prop_name), "", "",
+        ])
 
     rows.sort(key=lambda r: str(r[0]).lower())
 
@@ -225,6 +249,7 @@ def generate_reconciliation_workbook(
         _col_sum(2),
         _col_sum(3),
         _col_sum(4),
+        "",
         "",
         "",
     ]
@@ -268,6 +293,19 @@ def generate_reconciliation_workbook(
             cell = ws.cell(row=row_idx, column=col_idx)
             if isinstance(cell.value, float):
                 cell.number_format = _CUR_FMT
+
+    # Notes footer (total policies / peak share / invoice / rev share / balance check)
+    if result.portfolio_totals:
+        amount_col_letter = get_column_letter(3)
+        peak_share_total = peak_share_qty_total * _PEAK_SHARE_RATE_PER_BED
+        _write_notes_footer(
+            ws,
+            result.portfolio_totals,
+            total_row_idx + 2,
+            peak_share_total,
+            amount_col_letter,
+            revenue_share_group_totals,
+        )
 
     # Auto-fit column widths
     for col_cells in ws.columns:
@@ -431,7 +469,12 @@ def _write_portfolio_summary(
 
 
 def _write_notes_footer(
-    ws, totals, start_row: int, peak_share_total: Decimal, amount_col_letter: str
+    ws,
+    totals,
+    start_row: int,
+    peak_share_total: Decimal,
+    amount_col_letter: str,
+    revenue_share_group_totals: Optional[dict] = None,
 ) -> None:
     """Write the accounting 'Notes' reconciliation block (see monthly workbook template)."""
     from openpyxl.styles import Font
@@ -447,6 +490,10 @@ def _write_notes_footer(
         (None, None, None, False),
         ("Invoice from Credit Boost", totals.total_invoice_amount_owed, _CURRENCY_FMT, False),
         ("Property rev share", totals.total_actual_property_revenue_share, _CURRENCY_FMT, False),
+    ]
+    for group_name, group_total in (revenue_share_group_totals or {}).items():
+        rows.append((f"{group_name} rev share", group_total, _CURRENCY_FMT, False))
+    rows += [
         ("Total collected", total_collected, _CURRENCY_FMT, True),
         ("s/b zero", totals.balance_difference, _CURRENCY_FMT, False),
     ]
