@@ -1,4 +1,7 @@
-"""Tests for the Accounting Summary 'Revenue Share Split' column."""
+"""Tests for the Accounting Summary 'Revenue Share Split' column and the
+shared Notes footer (total policies / peak share / group split / balance
+check) written to both the Accounting Summary and Reconciliation workbooks.
+"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -16,7 +19,7 @@ from services.output_generator import _write_accounting_summary, generate_reconc
 openpyxl = pytest.importorskip("openpyxl")
 
 
-def _make_property_result(name: str, revenue_share: Decimal) -> PropertyResult:
+def _make_property_result(name: str, revenue_share: Decimal, qty: Decimal) -> PropertyResult:
     return PropertyResult(
         internal_property_id=f"CB-{name}",
         pms_property_id="",
@@ -24,6 +27,7 @@ def _make_property_result(name: str, revenue_share: Decimal) -> PropertyResult:
         property_name=name,
         reporting_month="2026-08",
         actual_property_revenue_share=revenue_share,
+        net_policy_quantity=qty,
         validation_status="ok",
     )
 
@@ -31,11 +35,10 @@ def _make_property_result(name: str, revenue_share: Decimal) -> PropertyResult:
 @pytest.fixture
 def result():
     property_results = [
-        _make_property_result("555 Boulevard", Decimal("100.00")),  # Denali
-        _make_property_result("Oak Tree Commons", Decimal("50.00")),  # Everest Campus (default)
-        _make_property_result("CA Property", Decimal("999.00")),  # California -> excluded
+        _make_property_result("555 Boulevard", Decimal("100.00"), Decimal("10")),  # Denali
+        _make_property_result("Oak Tree Commons", Decimal("50.00"), Decimal("20")),  # Everest Campus (default)
+        _make_property_result("CA Property", Decimal("999.00"), Decimal("5")),  # California -> excluded
     ]
-    property_results[-1].net_policy_quantity = Decimal("5")
     return ReconciliationResult(
         status=ReconciliationStatus.PASSED,
         reporting_month="2026-08",
@@ -47,7 +50,7 @@ def result():
             total_actual_property_revenue_share=Decimal("1149.00"),
             total_invoice_amount_owed=Decimal("500.00"),
             total_cash_received=Decimal("1649.00"),
-            total_net_policy_quantity=Decimal("5"),
+            total_net_policy_quantity=Decimal("35"),
             balance_difference=Decimal("0.00"),
         ),
     )
@@ -85,21 +88,21 @@ def test_revenue_share_split_column_and_group_totals(result, tmp_path):
     assert groups_by_property["Oak Tree Commons"] == "Everest Campus"
     assert groups_by_property["CA Property"] == "Everest Campus"
 
-    # Group subtotal rows appear in the portfolio summary block.
-    summary_labels = [row[0].value for row in ws.iter_rows(min_col=1, max_col=1) if row[0].value]
-    assert "Denali Revenue Share Total" in summary_labels
-    assert "Everest Campus Revenue Share Total" in summary_labels
-
+    # Group subtotal rows appear in the portfolio summary block, computed as
+    # QTY x $3/bed (not actual PA revenue share).
     label_to_row = {row[0].value: row[0].row for row in ws.iter_rows(min_col=1, max_col=1) if row[0].value}
-    denali_total = ws.cell(row=label_to_row["Denali Revenue Share Total"], column=2).value
-    everest_total = ws.cell(row=label_to_row["Everest Campus Revenue Share Total"], column=2).value
-    assert denali_total == pytest.approx(100.00)
-    # Everest Campus total excludes the CA property's $999 revenue share.
-    assert everest_total == pytest.approx(50.00)
+    denali_label = "Denali rev share (count @$3/bed)"
+    everest_label = "Everest Campus rev share (count @$3/bed)"
+    assert denali_label in label_to_row
+    assert everest_label in label_to_row
+    # 555 Boulevard: 10 qty x $3 = 30.00
+    assert ws.cell(row=label_to_row[denali_label], column=2).value == pytest.approx(30.00)
+    # Oak Tree Commons: 20 qty x $3 = 60.00 (CA Property's 5 qty is excluded)
+    assert ws.cell(row=label_to_row[everest_label], column=2).value == pytest.approx(60.00)
 
     # Notes footer: CA property's QTY (5) is excluded from the peak-share benchmark too.
-    peak_share_row = label_to_row["Peak revenue share from Credit Boost @ $3/bed"]
-    assert ws.cell(row=peak_share_row, column=2).value == pytest.approx(0.0)
+    peak_share_row = label_to_row["TOTAL Peak revenue share from Credit Boost @ $3/bed"]
+    assert ws.cell(row=peak_share_row, column=2).value == pytest.approx(90.00)
 
     assert ws.cell(row=label_to_row["Invoice from Credit Boost"], column=2).value == pytest.approx(500.00)
     assert ws.cell(row=label_to_row["Property rev share"], column=2).value == pytest.approx(1149.00)
@@ -138,11 +141,12 @@ def test_reconciliation_workbook_has_split_column_and_notes_footer(result, tmp_p
     assert total_row_idx is not None
 
     label_to_row = {row[0].value: row[0].row for row in ws.iter_rows(min_col=1, max_col=1) if row[0].value}
-    assert ws.cell(row=label_to_row["Denali rev share"], column=2).value == pytest.approx(100.00)
-    assert ws.cell(row=label_to_row["Everest Campus rev share"], column=2).value == pytest.approx(50.00)
-    peak_share_row = label_to_row["Peak revenue share from Credit Boost @ $3/bed"]
-    assert ws.cell(row=peak_share_row, column=2).value == pytest.approx(0.0)
+    assert ws.cell(row=label_to_row["Denali rev share (count @$3/bed)"], column=2).value == pytest.approx(30.00)
+    assert ws.cell(row=label_to_row["Everest Campus rev share (count @$3/bed)"], column=2).value == pytest.approx(60.00)
+    peak_share_row = label_to_row["TOTAL Peak revenue share from Credit Boost @ $3/bed"]
+    assert ws.cell(row=peak_share_row, column=2).value == pytest.approx(90.00)
     assert ws.cell(row=label_to_row["Invoice from Credit Boost"], column=2).value == pytest.approx(500.00)
+    assert ws.cell(row=label_to_row["Total collected"], column=2).value == pytest.approx(1649.00)
     assert ws.cell(row=label_to_row["Total collected"], column=2).value == pytest.approx(1649.00)
     assert ws.cell(row=label_to_row["s/b zero"], column=2).value == pytest.approx(0.0)
 

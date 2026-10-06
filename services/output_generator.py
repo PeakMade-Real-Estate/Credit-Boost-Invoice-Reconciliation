@@ -196,7 +196,7 @@ def generate_reconciliation_workbook(
     ]
 
     rows = []
-    revenue_share_group_totals: dict = {}
+    revenue_share_group_qty_totals: dict = {}
     peak_share_qty_total = Decimal("0")
 
     for pr in result.property_results:
@@ -205,13 +205,13 @@ def generate_reconciliation_workbook(
         # California properties get no revenue share per bed — excluded from
         # both the peak-share benchmark and the Denali/Everest Campus totals.
         if not is_ca:
-            revenue_share_group_totals[group] = (
-                revenue_share_group_totals.get(group, Decimal("0"))
-                + pr.actual_property_revenue_share
+            revenue_share_group_qty_totals[group] = (
+                revenue_share_group_qty_totals.get(group, Decimal("0"))
+                + pr.net_policy_quantity
             )
             peak_share_qty_total += pr.net_policy_quantity
         else:
-            revenue_share_group_totals.setdefault(group, Decimal("0"))
+            revenue_share_group_qty_totals.setdefault(group, Decimal("0"))
         rows.append([
             pr.property_name,
             int(pr.net_policy_quantity),
@@ -298,6 +298,9 @@ def generate_reconciliation_workbook(
     if result.portfolio_totals:
         amount_col_letter = get_column_letter(3)
         peak_share_total = peak_share_qty_total * _PEAK_SHARE_RATE_PER_BED
+        revenue_share_group_totals = {
+            g: qty * _PEAK_SHARE_RATE_PER_BED for g, qty in revenue_share_group_qty_totals.items()
+        }
         _write_notes_footer(
             ws,
             result.portfolio_totals,
@@ -363,7 +366,7 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
 
     property_states = _get_property_states_safe()
 
-    revenue_share_group_totals: dict = {}
+    revenue_share_group_qty_totals: dict = {}
     peak_share_qty_total = Decimal("0")
 
     for row_idx, pr in enumerate(result.property_results, start=2):
@@ -373,13 +376,13 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
         # California properties get no revenue share per bed — excluded from
         # both the peak-share benchmark and the Denali/Everest Campus totals.
         if not is_ca:
-            revenue_share_group_totals[revenue_share_group] = (
-                revenue_share_group_totals.get(revenue_share_group, Decimal("0"))
-                + pr.actual_property_revenue_share
+            revenue_share_group_qty_totals[revenue_share_group] = (
+                revenue_share_group_qty_totals.get(revenue_share_group, Decimal("0"))
+                + pr.net_policy_quantity
             )
             peak_share_qty_total += pr.net_policy_quantity
         else:
-            revenue_share_group_totals.setdefault(revenue_share_group, Decimal("0"))
+            revenue_share_group_qty_totals.setdefault(revenue_share_group, Decimal("0"))
         row_data = [
             pr.reporting_month,
             pr.internal_property_id,
@@ -423,6 +426,9 @@ def _write_accounting_summary(result: ReconciliationResult, path: str) -> None:
         summary_start = len(result.property_results) + 4
         amount_col_letter = get_column_letter(headers.index("AMOUNT") + 1)
         peak_share_total = peak_share_qty_total * _PEAK_SHARE_RATE_PER_BED
+        revenue_share_group_totals = {
+            g: qty * _PEAK_SHARE_RATE_PER_BED for g, qty in revenue_share_group_qty_totals.items()
+        }
         next_row = _write_portfolio_summary(
             ws, totals, summary_start, revenue_share_group_totals
         )
@@ -450,7 +456,9 @@ def _write_portfolio_summary(
         ("Overall Status", totals.overall_status.value if totals.overall_status else ""),
     ]
     for group_name, group_total in (revenue_share_group_totals or {}).items():
-        labels.append((f"{group_name} Revenue Share Total", group_total))
+        labels.append(
+            (f"{group_name} rev share (count @${_PEAK_SHARE_RATE_PER_BED:.0f}/bed)", group_total)
+        )
 
     title_cell = ws.cell(row=start_row, column=1, value="PORTFOLIO SUMMARY")
     title_cell.font = Font(bold=True, size=12)
@@ -486,14 +494,16 @@ def _write_notes_footer(
 
     rows = [
         ("total policies charged by Credit Boost =", totals.total_net_policy_quantity, _INTEGER_FMT, False),
-        (f"Peak revenue share from Credit Boost @ ${_PEAK_SHARE_RATE_PER_BED:.0f}/bed", peak_share_total, _CURRENCY_FMT, False),
+        (f"TOTAL Peak revenue share from Credit Boost @ ${_PEAK_SHARE_RATE_PER_BED:.0f}/bed", peak_share_total, _CURRENCY_FMT, False),
+    ]
+    for group_name, group_total in (revenue_share_group_totals or {}).items():
+        rows.append(
+            (f"{group_name} rev share (count @${_PEAK_SHARE_RATE_PER_BED:.0f}/bed)", group_total, _CURRENCY_FMT, False)
+        )
+    rows += [
         (None, None, None, False),
         ("Invoice from Credit Boost", totals.total_invoice_amount_owed, _CURRENCY_FMT, False),
         ("Property rev share", totals.total_actual_property_revenue_share, _CURRENCY_FMT, False),
-    ]
-    for group_name, group_total in (revenue_share_group_totals or {}).items():
-        rows.append((f"{group_name} rev share", group_total, _CURRENCY_FMT, False))
-    rows += [
         ("Total collected", total_collected, _CURRENCY_FMT, True),
         ("s/b zero", totals.balance_difference, _CURRENCY_FMT, False),
     ]
