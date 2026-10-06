@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -29,9 +30,13 @@ import pandas as pd
 
 from models.boom_models import BoomTransactionLine
 from models.reconciliation_models import InvoiceSummary
-from services.utils import parse_decimal
+from services.utils import normalize_text, parse_decimal
 
 logger = logging.getLogger(__name__)
+
+_RECONCILIATION_SHEET = "Reconciliation Data"
+_PROPERTY_SUMMARY_SHEET = "Property Summary"
+_VISIBLE_INVOICE_SHEET = "Redpoint Invoice"
 
 # ---------------------------------------------------------------------------
 # Default column-name mappings (first match wins, case-insensitive)
@@ -110,8 +115,11 @@ def parse_boom_file(
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
     else:
         xlsx = pd.ExcelFile(path)
-        sheet_name = "Reconciliation Data" if "Reconciliation Data" in xlsx.sheet_names else 0
-        df = pd.read_excel(xlsx, sheet_name=sheet_name, dtype=str, keep_default_na=False)
+        if _RECONCILIATION_SHEET in xlsx.sheet_names:
+            df = pd.read_excel(xlsx, sheet_name=_RECONCILIATION_SHEET, dtype=str, keep_default_na=False)
+            df = _filter_to_visible_properties(df, xlsx, effective_map)
+        else:
+            df = pd.read_excel(xlsx, sheet_name=0, dtype=str, keep_default_na=False)
 
     # Normalise column names to lowercase + underscores
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
@@ -192,6 +200,74 @@ def _resolve_columns(
                 result[field] = norm
                 break
     return result
+
+
+def _visible_property_names(
+    xlsx: pd.ExcelFile, sheet_name: str, header_row: int
+) -> Optional[set]:
+    """Normalized property names still present in a visible invoice sheet.
+
+    Returns ``None`` if the sheet (or a recognisable property column) isn't
+    present, so callers can tell "sheet missing" apart from "sheet is empty".
+    """
+    if sheet_name not in xlsx.sheet_names:
+        return None
+
+    sheet_df = pd.read_excel(
+        xlsx, sheet_name=sheet_name, header=header_row, dtype=str, keep_default_na=False
+    )
+    property_col = None
+    for col in sheet_df.columns:
+        if re.sub(r"[^a-z0-9]", "", str(col).strip().lower()) in ("propertyname", "property"):
+            property_col = col
+            break
+    if property_col is None:
+        return None
+
+    return {
+        normalize_text(str(value))
+        for value in sheet_df[property_col]
+        if str(value).strip() and str(value).strip().upper() != "TOTAL"
+    }
+
+
+def _filter_to_visible_properties(
+    df: pd.DataFrame, xlsx: pd.ExcelFile, effective_map: Dict[str, List[str]]
+) -> pd.DataFrame:
+    """Drop rows for properties removed from the visible invoice sheets.
+
+    The hidden 'Reconciliation Data' sheet always retains every original raw
+    row (needed so qualifying-filter columns survive a re-upload). If a user
+    deleted properties from the visible 'Property Summary' and/or
+    'Redpoint Invoice' sheets (e.g. properties not in a pilot) before
+    re-uploading the file for reconciliation, those deletions must carry
+    through here too rather than being silently ignored.
+    """
+    summary_names = _visible_property_names(xlsx, _PROPERTY_SUMMARY_SHEET, header_row=9)
+    invoice_names = _visible_property_names(xlsx, _VISIBLE_INVOICE_SHEET, header_row=7)
+    candidate_sets = [s for s in (summary_names, invoice_names) if s is not None]
+    if not candidate_sets:
+        return df
+    # A property removed from either visible sheet is treated as removed.
+    kept_properties = set.intersection(*candidate_sets)
+
+    normalized_cols = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    col_map = _resolve_columns(normalized_cols, effective_map)
+    property_col = col_map.get("boom_property_id")
+    if not property_col:
+        return df
+
+    df = df.copy()
+    df.columns = normalized_cols
+    mask = df[property_col].apply(lambda v: normalize_text(str(v)) in kept_properties)
+    filtered = df[mask].reset_index(drop=True)
+    if filtered.empty and not df.empty:
+        logger.warning(
+            "Visible-sheet property filter would remove every row; "
+            "using the unfiltered Reconciliation Data sheet instead."
+        )
+        return df
+    return filtered
 
 
 def _assert_required_columns(col_map: Dict[str, str], required: set) -> None:
