@@ -62,6 +62,7 @@ def init_db(db_path: Optional[str] = None) -> None:
         for migration_sql in [
             "ALTER TABLE reconciliation_runs ADD COLUMN reconciliation_csv_path TEXT",
             "ALTER TABLE reconciliation_runs ADD COLUMN run_type TEXT DEFAULT 'invoice_cash'",
+            "ALTER TABLE reconciliation_runs ADD COLUMN redpoint_invoice_zip_path TEXT",
         ]:
             try:
                 conn.execute(migration_sql)
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_runs (
     accounting_output_path   TEXT,
     audit_output_path        TEXT,
     reconciliation_csv_path  TEXT,
+    redpoint_invoice_zip_path TEXT,
     exception_count          INTEGER DEFAULT 0,
     blocking_exception_count INTEGER DEFAULT 0,
     notes                    TEXT,
@@ -135,10 +137,10 @@ def save_run(run: ReconciliationRun, result_json_path: str = "") -> None:
                 uploaded_by, uploaded_date, status,
                 invoice_stored_path, cash_report_stored_path,
                 accounting_output_path, audit_output_path,
-                reconciliation_csv_path,
+                reconciliation_csv_path, redpoint_invoice_zip_path,
                 exception_count, blocking_exception_count,
                 notes, result_json_path, run_type
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 run.run_id,
@@ -156,6 +158,7 @@ def save_run(run: ReconciliationRun, result_json_path: str = "") -> None:
                 run.accounting_output_path,
                 run.audit_output_path,
                 run.reconciliation_csv_path if hasattr(run, 'reconciliation_csv_path') else "",
+                getattr(run, 'redpoint_invoice_zip_path', ''),
                 run.exception_count,
                 run.blocking_exception_count,
                 run.notes,
@@ -206,6 +209,15 @@ def update_run_outputs(
             WHERE run_id = ?
             """,
             (accounting_path, audit_path, reconciliation_csv_path, status.value, run_id),
+        )
+
+
+def update_redpoint_invoice_zip_path(run_id: str, zip_path: str) -> None:
+    """Persist the path to the (Invoice XLSX + PDF + Reconciliation Workbook) zip."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE reconciliation_runs SET redpoint_invoice_zip_path = ? WHERE run_id = ?",
+            (zip_path, run_id),
         )
 
 

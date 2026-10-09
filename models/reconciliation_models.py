@@ -357,6 +357,7 @@ class ReconciliationRun:
     accounting_output_path: str = ""
     audit_output_path: str = ""
     reconciliation_csv_path: str = ""
+    redpoint_invoice_zip_path: str = ""
     exception_count: int = 0
     blocking_exception_count: int = 0
     notes: str = ""
@@ -442,6 +443,9 @@ class ReconciliationResult:
     accounting_output_path: str = ""
     audit_output_path: str = ""
     reconciliation_csv_path: str = ""
+    redpoint_invoice_path: str = ""
+    redpoint_invoice_pdf_path: str = ""
+    redpoint_invoice_zip_path: str = ""
     errors: List[str] = field(default_factory=list)
 
     # ------------------------------------------------------------------

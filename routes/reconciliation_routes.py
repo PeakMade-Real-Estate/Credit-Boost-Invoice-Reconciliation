@@ -53,6 +53,7 @@ from services.database import (
     register_file_hash,
     save_overrides,
     save_run,
+    update_redpoint_invoice_zip_path,
     update_run_outputs,
 )
 from services.output_generator import generate_outputs, generate_reconciliation_workbook
@@ -257,15 +258,6 @@ def process_upload():
     redpoint_invoice_path = ""
     redpoint_pdf_path = ""
     try:
-        if vendor == "Credit Boost powered by Boom":
-            redpoint_invoice_path, redpoint_pdf_path = generate_redpoint_invoice_package(
-                invoice_path,
-                current_app.config["OUTPUT_FOLDER"],
-                run_id,
-                base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
-                reporting_month=reporting_month,
-            )
-
         result = run_reconciliation(
             invoice_file_path=invoice_path,
             cash_report_file_path=cash_path,
@@ -291,6 +283,41 @@ def process_upload():
         flash(f"Reconciliation failed: {exc!r} — see server log for traceback", "danger")
         return redirect(url_for("reconciliation.upload"))
 
+    # --- Generate the Redpoint invoice (Boom only) *after* reconciliation so it
+    # can include the Peak Rev Share deduction, computed from the cash report. ---
+    if vendor == "Credit Boost powered by Boom":
+        try:
+            from services.output_generator import compute_peak_share_total
+
+            peak_share_total = compute_peak_share_total(result.property_results)
+            redpoint_invoice_path, redpoint_pdf_path = generate_redpoint_invoice_package(
+                invoice_path,
+                current_app.config["OUTPUT_FOLDER"],
+                run_id,
+                base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+                reporting_month=reporting_month,
+                peak_rev_share_deduction=peak_share_total,
+            )
+            result.redpoint_invoice_path = redpoint_invoice_path
+            result.redpoint_invoice_pdf_path = redpoint_pdf_path
+
+            zip_path = str(
+                Path(current_app.config["OUTPUT_FOLDER"]) / f"{run_id}_redpoint_invoice_package.zip"
+            )
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.write(redpoint_invoice_path, arcname=Path(redpoint_invoice_path).name)
+                zf.write(redpoint_pdf_path, arcname=Path(redpoint_pdf_path).name)
+                if result.reconciliation_csv_path:
+                    zf.write(result.reconciliation_csv_path, arcname=Path(result.reconciliation_csv_path).name)
+            result.redpoint_invoice_zip_path = zip_path
+        except Exception as exc:
+            logger.error("Redpoint invoice generation failed for run %s: %s", run_id, exc, exc_info=True)
+            flash(
+                "Reconciliation completed, but Redpoint invoice generation failed. "
+                "You can still download the reconciliation outputs below.",
+                "warning",
+            )
+
     # --- Persist run metadata ---
     invoice_hash = result.invoice_summary.source_file_hash if result.invoice_summary else ""
     run_meta = ReconciliationRun(
@@ -308,6 +335,7 @@ def process_upload():
         cash_report_stored_path=cash_path,
         exception_count=result.exception_count,
         blocking_exception_count=result.blocking_exception_count,
+        redpoint_invoice_zip_path=result.redpoint_invoice_zip_path,
     )
     json_path = _save_result_json(result, run_id)
     save_run(run_meta, result_json_path=json_path)
@@ -553,14 +581,70 @@ def results(run_id: str):
 def download(run_id: str, file_type: str):
     """Generate (if needed) and serve the requested output file.
 
-    file_type: ``accounting``, ``audit``, or ``reconciliation_csv``
+    file_type: ``accounting``, ``audit``, ``reconciliation_csv``, or
+    ``redpoint_invoice_zip`` (Boom runs only).
     """
-    if file_type not in ("accounting", "audit", "reconciliation_csv"):
+    if file_type not in ("accounting", "audit", "reconciliation_csv", "redpoint_invoice_zip"):
         abort(400)
 
     run_meta = get_run(run_id)
     if not run_meta:
         abort(404)
+
+    if file_type == "redpoint_invoice_zip":
+        zip_path = run_meta.get("redpoint_invoice_zip_path", "")
+        if not zip_path or not Path(zip_path).exists():
+            if run_meta["vendor"] != "Credit Boost powered by Boom":
+                flash("Redpoint invoice is only available for Credit Boost powered by Boom runs.", "danger")
+                return redirect(url_for("reconciliation.results", run_id=run_id))
+            from services.output_generator import compute_peak_share_total
+            from services.reconciliation_service import run_reconciliation as _rerun
+            try:
+                result = _rerun(
+                    invoice_file_path=run_meta["invoice_stored_path"],
+                    cash_report_file_path=run_meta["cash_report_stored_path"],
+                    reporting_month=run_meta["reporting_month"],
+                    vendor=run_meta["vendor"],
+                    property_master_path=current_app.config["PROPERTY_MASTER_PATH"],
+                    rate_mapping_path=current_app.config["RATE_MAPPING_PATH"],
+                    property_aliases_path=current_app.config["PROPERTY_ALIASES_PATH"],
+                    run_id=run_id,
+                    generate_outputs=True,
+                    output_folder=current_app.config["OUTPUT_FOLDER"],
+                )
+                peak_share_total = compute_peak_share_total(result.property_results)
+                invoice_path, pdf_path = generate_redpoint_invoice_package(
+                    run_meta["invoice_stored_path"],
+                    current_app.config["OUTPUT_FOLDER"],
+                    run_id,
+                    base_price=current_app.config.get("CREDIT_BOOST_BASE_PRICE", Decimal("6.50")),
+                    reporting_month=run_meta["reporting_month"],
+                    peak_rev_share_deduction=peak_share_total,
+                )
+                zip_path = str(
+                    Path(current_app.config["OUTPUT_FOLDER"]) / f"{run_id}_redpoint_invoice_package.zip"
+                )
+                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(invoice_path, arcname=Path(invoice_path).name)
+                    zf.write(pdf_path, arcname=Path(pdf_path).name)
+                    if result.reconciliation_csv_path:
+                        zf.write(result.reconciliation_csv_path, arcname=Path(result.reconciliation_csv_path).name)
+                update_redpoint_invoice_zip_path(run_id, zip_path)
+            except Exception as exc:
+                logger.error("Redpoint invoice zip generation failed: %s", exc, exc_info=True)
+                flash("Redpoint invoice generation failed.  Please contact support.", "danger")
+                return redirect(url_for("reconciliation.results", run_id=run_id))
+
+        if not zip_path or not Path(zip_path).exists():
+            flash("Output file not found.", "danger")
+            return redirect(url_for("reconciliation.results", run_id=run_id))
+
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=f"{run_id}_redpoint_invoice_package.zip",
+            mimetype="application/zip",
+        )
 
     # For reconciliation_csv, generate on demand from the stored JSON result
     if file_type == "reconciliation_csv":

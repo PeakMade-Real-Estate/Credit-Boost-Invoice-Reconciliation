@@ -83,6 +83,46 @@ def test_generate_redpoint_invoice_reprices_and_removes_boom_columns(tmp_path):
     assert lines[0].transaction_amount == Decimal("6.50")
 
 
+def test_generate_redpoint_invoice_applies_peak_rev_share_deduction(tmp_path):
+    source = tmp_path / "boom_statement.csv"
+    pd.DataFrame(
+        [
+            {"ID": "1", "Name": "A", "Property Name": "Beach Club", "Amount": "-$0.91"},
+            {"ID": "2", "Name": "B", "Property Name": "Beach Club", "Amount": "-$0.91"},
+        ]
+    ).to_csv(source, index=False)
+
+    output_path = generate_redpoint_invoice(
+        str(source), str(tmp_path), "REC-TEST", base_price=Decimal("6.50"),
+        reporting_month="2026-07", peak_rev_share_deduction=Decimal("6.00"),
+    )
+
+    ws = load_workbook(output_path)["Property Summary"]
+    # Header row 10, one property row (11), TOTAL row (12), blank (13), deduction (14), total due (15)
+    assert ws["A12"].value == "TOTAL"
+    assert ws["C12"].value == 13.0  # 2 x $6.50
+    assert ws["A14"].value == "Peak Rev Share"
+    assert ws["C14"].value == -6.00
+    assert ws["A15"].value == "Total Due"
+    assert ws["C15"].value == 7.0  # 13.0 - 6.00
+
+
+def test_generate_redpoint_invoice_without_deduction_has_no_extra_rows(tmp_path):
+    source = tmp_path / "boom_statement.csv"
+    pd.DataFrame(
+        [{"ID": "1", "Name": "A", "Property Name": "Beach Club", "Amount": "-$0.91"}]
+    ).to_csv(source, index=False)
+
+    output_path = generate_redpoint_invoice(
+        str(source), str(tmp_path), "REC-TEST", base_price=Decimal("6.50"),
+        reporting_month="2026-07",
+    )
+
+    ws = load_workbook(output_path)["Property Summary"]
+    assert ws["A12"].value == "TOTAL"
+    assert ws["A14"].value is None
+
+
 def test_generate_redpoint_invoice_package_adds_summary_and_pdf(tmp_path):
     source = tmp_path / "boom_statement.csv"
     pd.DataFrame(

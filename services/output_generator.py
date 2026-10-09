@@ -110,6 +110,22 @@ def _revenue_share_group_for(property_name: str) -> str:
     return groups.get(normalize_text(property_name or ""), _DEFAULT_REVENUE_SHARE_GROUP)
 
 
+def compute_peak_share_total(property_results) -> Decimal:
+    """Total QTY x $3/bed benchmark across *property_results*, excluding California.
+
+    Shared with the Redpoint invoice generator so the "Peak Rev Share"
+    deduction matches the reconciliation workbook's Notes footer exactly.
+    """
+    from services.property_state_service import is_california
+
+    property_states = _get_property_states_safe()
+    qty_total = Decimal("0")
+    for pr in property_results:
+        if not is_california(pr.property_name, property_states):
+            qty_total += pr.net_policy_quantity
+    return qty_total * _PEAK_SHARE_RATE_PER_BED
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

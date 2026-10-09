@@ -58,6 +58,7 @@ def generate_redpoint_invoice(
     *,
     base_price: Optional[Decimal] = None,
     reporting_month: Optional[str] = None,
+    peak_rev_share_deduction: Optional[Decimal] = None,
 ) -> str:
     """Create a branded Redpoint invoice workbook from a Boom statement export."""
     xlsx_path, _pdf_path = _generate_redpoint_invoice_artifacts(
@@ -67,6 +68,7 @@ def generate_redpoint_invoice(
         base_price=base_price,
         reporting_month=reporting_month,
         include_pdf=False,
+        peak_rev_share_deduction=peak_rev_share_deduction,
     )
     return xlsx_path
 
@@ -78,6 +80,7 @@ def generate_redpoint_invoice_package(
     *,
     base_price: Optional[Decimal] = None,
     reporting_month: Optional[str] = None,
+    peak_rev_share_deduction: Optional[Decimal] = None,
 ) -> Tuple[str, str]:
     """Create the branded XLSX invoice and matching PDF invoice."""
     xlsx_path, pdf_path = _generate_redpoint_invoice_artifacts(
@@ -87,6 +90,7 @@ def generate_redpoint_invoice_package(
         base_price=base_price,
         reporting_month=reporting_month,
         include_pdf=True,
+        peak_rev_share_deduction=peak_rev_share_deduction,
     )
     if not pdf_path:
         raise RuntimeError("PDF invoice generation did not return a path.")
@@ -101,6 +105,7 @@ def _generate_redpoint_invoice_artifacts(
     base_price: Optional[Decimal],
     reporting_month: Optional[str],
     include_pdf: bool,
+    peak_rev_share_deduction: Optional[Decimal] = None,
 ) -> Tuple[str, Optional[str]]:
     source_path = Path(boom_statement_path)
     if not source_path.exists():
@@ -132,12 +137,18 @@ def _generate_redpoint_invoice_artifacts(
     os.makedirs(output_folder, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_path = Path(output_folder) / f"{run_id}_redpoint_invoice_{timestamp}.xlsx"
-    _write_invoice_workbook(output_path, invoice_df, summary_df, df, run_id, reporting_month)
+    _write_invoice_workbook(
+        output_path, invoice_df, summary_df, df, run_id, reporting_month,
+        peak_rev_share_deduction=peak_rev_share_deduction,
+    )
 
     pdf_path = None
     if include_pdf:
         pdf_path = Path(output_folder) / f"{run_id}_redpoint_invoice_{timestamp}.pdf"
-        _write_invoice_pdf(pdf_path, summary_df, run_id)
+        _write_invoice_pdf(
+            pdf_path, summary_df, run_id,
+            peak_rev_share_deduction=peak_rev_share_deduction,
+        )
 
     logger.info(
         "Redpoint invoice generated from %s: %s  rows=%d  base_price=%s",
@@ -156,11 +167,16 @@ def _write_invoice_workbook(
     reconciliation_df: pd.DataFrame,
     run_id: str,
     reporting_month: Optional[str],
+    *,
+    peak_rev_share_deduction: Optional[Decimal] = None,
 ) -> None:
     wb = Workbook()
     summary_ws = wb.active
     summary_ws.title = _SUMMARY_SHEET
-    _write_summary_sheet(summary_ws, summary_df, run_id, reporting_month)
+    _write_summary_sheet(
+        summary_ws, summary_df, run_id, reporting_month,
+        peak_rev_share_deduction=peak_rev_share_deduction,
+    )
 
     ws = wb.create_sheet(_VISIBLE_SHEET)
 
@@ -206,7 +222,9 @@ def _write_invoice_workbook(
 
 
 def _write_summary_sheet(
-    ws, summary_df: pd.DataFrame, run_id: str, reporting_month: Optional[str]
+    ws, summary_df: pd.DataFrame, run_id: str, reporting_month: Optional[str],
+    *,
+    peak_rev_share_deduction: Optional[Decimal] = None,
 ) -> None:
     _add_logo(ws, _REDPOINT_LOGO_PATH, "A1", width=220)
     _add_logo(ws, _CREDIT_BOOST_LOGO_PATH, "C1", width=180)
@@ -233,6 +251,23 @@ def _write_summary_sheet(
         ws.cell(row=row_idx, column=2).number_format = "#,##0"
         ws.cell(row=row_idx, column=3).number_format = "#,##0.00"
 
+    if peak_rev_share_deduction is not None:
+        total_amount = Decimal(str(summary_df.iloc[-1]["Total Amount"]))
+        total_due = total_amount - peak_rev_share_deduction
+        deduction_row = header_row + len(summary_df) + 2
+
+        label_cell = ws.cell(row=deduction_row, column=1, value="Peak Rev Share")
+        label_cell.font = Font(bold=True)
+        value_cell = ws.cell(row=deduction_row, column=3, value=float(-peak_rev_share_deduction))
+        value_cell.number_format = "#,##0.00"
+
+        total_due_row = deduction_row + 1
+        total_label_cell = ws.cell(row=total_due_row, column=1, value="Total Due")
+        total_label_cell.font = Font(bold=True, underline="single")
+        total_value_cell = ws.cell(row=total_due_row, column=3, value=float(total_due))
+        total_value_cell.font = Font(bold=True, underline="single")
+        total_value_cell.number_format = "#,##0.00"
+
     for col_idx, column_name in enumerate(summary_df.columns, start=1):
         max_len = max(
             [len(str(column_name))]
@@ -241,7 +276,10 @@ def _write_summary_sheet(
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 3, 50)
 
 
-def _write_invoice_pdf(output_path: Path, summary_df: pd.DataFrame, run_id: str) -> None:
+def _write_invoice_pdf(
+    output_path: Path, summary_df: pd.DataFrame, run_id: str,
+    *, peak_rev_share_deduction: Optional[Decimal] = None,
+) -> None:
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
@@ -285,20 +323,31 @@ def _write_invoice_pdf(output_path: Path, summary_df: pd.DataFrame, run_id: str)
     ])
 
     table_rows = [summary_df.columns.tolist()]
+    total_amount: object = Decimal("0")
     for row in summary_df.itertuples(index=False):
         property_name, people_count, total_amount = row
         table_rows.append([property_name, people_count, f"${Decimal(str(total_amount)):.2f}"])
 
+    bold_row_indices = [len(table_rows) - 1]  # the TOTAL row
+
+    if peak_rev_share_deduction is not None:
+        total_due = Decimal(str(total_amount)) - peak_rev_share_deduction
+        table_rows.append(["Peak Rev Share", "", f"-${peak_rev_share_deduction:.2f}"])
+        table_rows.append(["Total Due", "", f"${total_due:.2f}"])
+        bold_row_indices.append(len(table_rows) - 1)
+
     table = Table(table_rows, colWidths=[3.8 * inch, 1.1 * inch, 1.4 * inch], repeatRows=1)
-    table.setStyle(TableStyle([
+    style_commands = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F3864")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F8FB")]),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-    ]))
+    ]
+    for row_idx in bold_row_indices:
+        style_commands.append(("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"))
+    table.setStyle(TableStyle(style_commands))
     elements.append(table)
 
     doc.build(elements)
